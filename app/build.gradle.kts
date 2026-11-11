@@ -28,19 +28,29 @@ val releaseStoreFile = signingValue("storeFile", "SIGNING_STORE_FILE")
 val hasReleaseSigning = releaseStoreFile != null && file(releaseStoreFile).exists()
 
 val rustDir = rootProject.layout.projectDirectory.dir("rust")
-val ndkHome = providers.environmentVariable("ANDROID_NDK_HOME")
-    .orElse("${System.getenv("LOCALAPPDATA")}\\Android\\Sdk\\ndk\\27.1.12297006")
 
-val cargoBin = "${System.getProperty("user.home")}\\.cargo\\bin"
+// The NDK lives in the standard SDK folder; CI sets ANDROID_NDK_HOME.
+val isWindows = System.getProperty("os.name").startsWith("Windows")
+val defaultNdk = if (isWindows) {
+    "${System.getenv("LOCALAPPDATA")}\\Android\\Sdk\\ndk\\27.1.12297006"
+} else {
+    "${System.getenv("ANDROID_SDK_ROOT") ?: "${System.getenv("ANDROID_HOME")}"}/ndk/27.1.12297006"
+}
+val ndkHome = providers.environmentVariable("ANDROID_NDK_HOME").orElse(defaultNdk)
+
+// Cargo lives in ~/.cargo/bin on Windows; on CI it is already on PATH.
+val cargoDir = if (isWindows) "${System.getProperty("user.home")}\\.cargo\\bin" else ""
+val cargoExe = if (isWindows) "$cargoDir\\cargo.exe" else "cargo"
+val pathSep = if (isWindows) ";" else ":"
 
 val buildRust by tasks.registering(Exec::class) {
     group = "rust"
     description = "Cross-compiles the Rust core for Android."
     workingDir = rustDir.asFile
     environment("ANDROID_NDK_HOME", ndkHome.get())
-    environment("PATH", "$cargoBin;${System.getenv("PATH")}")
+    environment("PATH", listOf(cargoDir, System.getenv("PATH")).filter { it.isNotBlank() }.joinToString(pathSep))
     commandLine(
-        "$cargoBin\\cargo.exe", "ndk",
+        cargoExe, "ndk",
         "-t", "arm64-v8a",
         "-t", "armeabi-v7a",
         "-t", "x86_64",
