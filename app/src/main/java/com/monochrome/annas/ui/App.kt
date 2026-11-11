@@ -81,7 +81,7 @@ private fun Splash() {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             LogoMark(size = 96.dp)
             Spacer(Modifier.height(20.dp))
-            Text("Anna's Archive", style = MaterialTheme.typography.displayMedium, color = androidx.compose.ui.graphics.Color.White)
+            Text("Quiet Archive", style = MaterialTheme.typography.displayMedium, color = androidx.compose.ui.graphics.Color.White)
         }
     }
 }

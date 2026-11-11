@@ -73,7 +73,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                 Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                     LogoMark()
                     Spacer(Modifier.height(24.dp))
-                    Text("Anna's Archive", style = MaterialTheme.typography.displayMedium, color = Color.White, textAlign = TextAlign.Center)
+                    Text("Quiet Archive", style = MaterialTheme.typography.displayMedium, color = Color.White, textAlign = TextAlign.Center)
                     Spacer(Modifier.height(8.dp))
                     Text("A quiet place for books.", style = MaterialTheme.typography.bodyMedium, color = Color(0xFF9A9A9A), textAlign = TextAlign.Center)
                 }

@@ -203,36 +203,44 @@ object WebFetch {
             android.util.Log.d("WebFetch", "challenge on XHR — navigating instead: $url")
             val isJson = url.substringBefore('?').endsWith(".json")
             navigate(webView, url, timeoutMs)
-            var dom = withContext(Dispatchers.Main) {
-                val js = if (isJson) "document.body ? document.body.innerText : ''"
-                         else "document.documentElement.outerHTML"
-                var attempt = 0
-                var text = ""
-                while (attempt < 6) {
-                    kotlinx.coroutines.delay(1200)
-                    text = jsUnescape(eval(webView, js)) ?: ""
-                    if (text.isNotBlank() && !isChallenge(text)) break
-                    attempt++
-                }
-                text
-            }
+            var dom = harvest(webView, isJson)
             logResult(dom, url)
             syncCookies(url)
             if (!isChallenge(dom)) return@withLock dom
 
             // Still blocked: the session itself is suspect (stale cookies, a
-            // wedged guard check). Start over with a brand new WebView.
+            // wedged guard check). Start over with a brand new WebView — a
+            // fresh session solves the check on the first page load.
             android.util.Log.w("WebFetch", "guard still blocking after navigation — resetting session")
             resetSession()
             // NOTE: session() (not ensureSession) — we are already holding the
             // gate mutex here and it is not reentrant.
             val fresh = session(if (base.isNotEmpty()) base else "https://annas-archive.gl", 40_000)
-            body = withContext(Dispatchers.Main) { xhr(fresh, url, timeoutMs) }
+            // Navigate in the fresh session: a solved browser gets through
+            // where an in-page fetch may still be fingerprinted.
+            navigate(fresh, url, timeoutMs)
+            body = harvest(fresh, isJson)
             logResult(body, url)
             syncCookies(url)
             body
         }
     }
+
+    /** Read the current document (or JSON body text) out of the WebView. */
+    private suspend fun harvest(webView: WebView, isJson: Boolean): String =
+        withContext(Dispatchers.Main) {
+            val js = if (isJson) "document.body ? document.body.innerText : ''"
+                     else "document.documentElement.outerHTML"
+            var attempt = 0
+            var text = ""
+            while (attempt < 6) {
+                kotlinx.coroutines.delay(1200)
+                text = jsUnescape(eval(webView, js)) ?: ""
+                if (text.isNotBlank() && !isChallenge(text)) break
+                attempt++
+            }
+            text
+        }
 
     /** Drop the session WebView so the next fetch starts from scratch. */
     private fun resetSession() {

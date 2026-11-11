@@ -13,6 +13,12 @@ app/src/main/jniLibs/
 # Rust
 rust/target/
 
+# Release signing (never commit)
+keystore.properties
+*.jks
+*.keystore
+!debug.keystore
+
 # IDE / OS
 .idea/
 *.iml
