@@ -36,14 +36,20 @@ jobs:
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --locked
 
-      - name: Install Android NDK
-        uses: android-actions/setup-android@v3
-
       - name: Install NDK and SDK packages
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "ndk;27.1.12297006" "platforms;android-36" "build-tools;36.0.0"
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.1.12297006" >> "$GITHUB_ENV"
+          SDKROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          SDKMANAGER=$(find "$SDKROOT/cmdline-tools" -name sdkmanager -type f 2>/dev/null | head -n1)
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::sdkmanager not found under $SDKROOT"
+            ls -la "$SDKROOT"
+            exit 1
+          fi
+          export PATH="$(dirname "$SDKMANAGER"):$PATH"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" "ndk;27.1.12297006" "platforms;android-36" "build-tools;36.0.0"
+          echo "ANDROID_NDK_HOME=$SDKROOT/ndk/27.1.12297006" >> "$GITHUB_ENV"
+          echo "Using NDK at $ANDROID_NDK_HOME"
 
       - name: Run Rust tests
         working-directory: rust
