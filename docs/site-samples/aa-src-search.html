@@ -1,0 +1,527 @@
+{% extends "layouts/index.html" %}
+
+{% block meta_tags %}
+  <meta property="robots" content="noindex" />
+{% endblock %}
+
+{% block title %}
+{% if (search_input | length) > 0 %}{{ gettext('page.search.title.results', search_input=search_input) }}{% else %}{{ gettext('page.search.title.new') }}{% endif %}
+{% endblock %}
+
+{% block body %}
+  <style>
+    .main {
+      max-width: none !important;
+    }
+  </style>
+
+  <script>
+    window.makeTristateCheckbox = function(name) {
+      var yesEl = document.querySelector('.js-tristate-yes--' + name);
+      var noEl = document.querySelector('.js-tristate-no--' + name);
+      var buttonEl = document.querySelector('.js-tristate-button--' + name);
+      var iconEl = document.querySelector('.js-tristate-icon--' + name);
+
+      function renderIcon() {
+        if (yesEl.checked) {
+          iconEl.innerHTML = '<span title="{{ gettext("page.search.icon.include_only") }}" class="text-[#0095ff] icon-[fluent-mdl2--box-checkmark-solid]"></span>';
+        } else if (noEl.checked) {
+          iconEl.innerHTML = '<span title="{{ gettext("page.search.icon.exclude") }}" class="text-red-500 icon-[fluent-mdl2--box-multiply-solid]"></span>';
+        } else {
+          iconEl.innerHTML = '<span title="{{ gettext("page.search.icon.unchecked") }}" class="icon-[fluent-mdl2--checkbox]"></span>';
+        }
+      }
+      renderIcon();
+
+      buttonEl.addEventListener('click', function(event) {
+        event.preventDefault();
+        if (yesEl.checked) {
+          yesEl.checked = false;
+          noEl.checked = true;
+        } else if (noEl.checked) {
+          yesEl.checked = false;
+          noEl.checked = false;
+        } else {
+          yesEl.checked = true;
+          noEl.checked = false;
+        }
+        renderIcon();
+      });
+    };
+  </script>
+
+  <form action="/search" method="get" role="search" class="js-search-form" onsubmit="for (el of document.querySelectorAll('.js-spinner')) { el.classList.remove('hidden'); }">
+    <input type="hidden" name="index" value="{{ search_dict.search_index_short }}" class="js-search-form-index">
+    <input type="hidden" name="page" value="1">
+
+    <div class="flex flex-wrap mb-1 text-black/64" role="tablist" aria-label="file tabs">
+      <a href="/search?q=" class="custom-a mr-4 mb-2 border-b-[3px] border-transparent aria-selected:border-[#0095ff] aria-selected:text-black aria-selected:font-bold js-search-top-tab" aria-selected="{{ 'true' if search_dict.search_index_short == '' else 'false' }}" tabindex="0">{{ gettext('page.search.tabs.download') }} <span class="js-search-tab-count-aarecords"><span class="mb-[-1px] text-sm text-[#555] inline-block icon-[svg-spinners--ring-resize] opacity-50 mx-1"></span></span></a>
+      <a href="/search?index=journals&q=" class="custom-a mr-4 mb-2 border-b-[3px] border-transparent aria-selected:border-[#0095ff] aria-selected:text-black aria-selected:font-bold js-search-top-tab" aria-selected="{{ 'true' if search_dict.search_index_short == 'journals' else 'false' }}" tabindex="0">{{ gettext('page.search.tabs.journals') }} <span class="js-search-tab-count-aarecords_journals"><span class="mb-[-1px] text-sm text-[#555] inline-block icon-[svg-spinners--ring-resize] opacity-50 mx-1"></span></span></a>
+      <a href="/search?index=digital_lending&q=" class="custom-a mr-4 mb-2 border-b-[3px] border-transparent aria-selected:border-[#0095ff] aria-selected:text-black aria-selected:font-bold js-search-top-tab" aria-selected="{{ 'true' if search_dict.search_index_short == 'digital_lending' else 'false' }}" tabindex="0">{{ gettext('page.search.tabs.digital_lending') }} <span class="js-search-tab-count-aarecords_digital_lending"><span class="mb-[-1px] text-sm text-[#555] inline-block icon-[svg-spinners--ring-resize] opacity-50 mx-1"></span></span></a>
+      <a href="/search?index=meta&q=" class="custom-a mr-4 mb-2 border-b-[3px] border-transparent aria-selected:border-[#0095ff] aria-selected:text-black aria-selected:font-bold js-search-top-tab" aria-selected="{{ 'true' if search_dict.search_index_short == 'meta' else 'false' }}" tabindex="0">{{ gettext('page.search.tabs.metadata') }} <span class="js-search-tab-count-aarecords_metadata"><span class="mb-[-1px] text-sm text-[#555] inline-block icon-[svg-spinners--ring-resize] opacity-50 mx-1"></span></span></a>
+    </div>
+
+    <script>
+      fetch('/dyn/search_counts?q={{ search_input | urlencode }}').then(function(response) { return response.json() }).then(function(json) {
+        document.querySelector('.js-search-tab-count-aarecords').innerText = json.aarecords.value != -1 ? `(${json.aarecords.timed_out ? '~' : ''}${json.aarecords.value_formatted}${json.aarecords.relation == 'gte' ? '+' : ''})` : '';
+        document.querySelector('.js-search-tab-count-aarecords_journals').innerText = json.aarecords_journals.value != -1 ? `(${json.aarecords_journals.timed_out ? '~' : ''}${json.aarecords_journals.value_formatted}${json.aarecords_journals.relation == 'gte' ? '+' : ''})` : '';
+        document.querySelector('.js-search-tab-count-aarecords_digital_lending').innerText = json.aarecords_digital_lending.value != -1 ? `(${json.aarecords_digital_lending.timed_out ? '~' : ''}${json.aarecords_digital_lending.value_formatted}${json.aarecords_digital_lending.relation == 'gte' ? '+' : ''})` : '';
+        document.querySelector('.js-search-tab-count-aarecords_metadata').innerText = json.aarecords_metadata.value != -1 ? `(${json.aarecords_metadata.timed_out ? '~' : ''}${json.aarecords_metadata.value_formatted}${json.aarecords_metadata.relation == 'gte' ? '+' : ''})` : '';
+
+        if (json.aarecords_journals.value > 0) {
+          for (el of document.querySelectorAll('.js-not-found-additional')) {
+            el.classList.remove('hidden');
+          }
+          for (el of document.querySelectorAll('.js-not-found-journals')) {
+            el.classList.remove('hidden');
+          }
+          for (el of document.querySelectorAll('.js-not-found-journals-count')) {
+            el.innerText = `${json.aarecords_journals.value_formatted}${json.aarecords_journals.relation == 'gte' ? '+' : ''}`
+          }
+        } else if (json.aarecords_digital_lending.value > 0) {
+          for (el of document.querySelectorAll('.js-not-found-additional')) {
+            el.classList.remove('hidden');
+          }
+          for (el of document.querySelectorAll('.js-not-found-digital_lending')) {
+            el.classList.remove('hidden');
+          }
+          for (el of document.querySelectorAll('.js-not-found-digital_lending-count')) {
+            el.innerText = `${json.aarecords_digital_lending.value_formatted}${json.aarecords_digital_lending.relation == 'gte' ? '+' : ''}`
+          }
+        } else if (json.aarecords_metadata.value > 0) {
+          for (el of document.querySelectorAll('.js-not-found-additional')) {
+            el.classList.remove('hidden');
+          }
+          for (el of document.querySelectorAll('.js-not-found-meta')) {
+            el.classList.remove('hidden');
+          }
+          for (el of document.querySelectorAll('.js-not-found-meta-count')) {
+            el.innerText = `${json.aarecords_metadata.value_formatted}${json.aarecords_metadata.relation == 'gte' ? '+' : ''}`
+          }
+        }
+      })
+    </script>
+
+    <div class="flex mb-2 items-center">
+      <a href="#" class="custom-a sm:hidden text-lg mr-2 opacity-50 hover:opacity-100" alt="Filter settings" title="Filter settings" onclick="event.preventDefault(); document.querySelector('.js-search-filter-settings').classList.remove('max-sm:hidden'); document.body.style.overflow = 'hidden'"><span class="icon-[mingcute--settings-6-line]"></span></a>
+      <input type="search" name="q" placeholder="{{ gettext('common.search.placeholder') }}" value="{{search_input}}" class="js-slash-focus js-search-main-input grow bg-black/6.7 px-2 py-1 mr-2 rounded" {% if search_input == '' %}autofocus{% endif %}>
+      <script>
+        (function() {
+          const searchEl = document.querySelector('.js-search-main-input');
+          function updateSearchTabs() {
+            for (var el of document.querySelectorAll('.js-search-top-tab')) { 
+              el.href = el.href.substr(0, el.href.indexOf('q=')) + 'q=' + searchEl.value;
+            }
+          }
+          searchEl.addEventListener('change', updateSearchTabs);
+          searchEl.addEventListener('keydown', updateSearchTabs);
+          searchEl.addEventListener('keyup', updateSearchTabs);
+          updateSearchTabs();
+        })();
+      </script>
+      <button class="sm:hidden px-4 py-1 bg-[#0195ff] text-white rounded hover:bg-blue-600" type="submit">{{ gettext('common.search.submit') }}</button>
+      <span class="sm:hidden"><span class="js-spinner hidden opacity-50 mb-[-0px] ml-2 text-xl text-[#555] inline-block icon-[svg-spinners--ring-resize]"></span></span>
+    </div>
+
+    <div class="flex w-full">
+      <div aria-labelledby="{{ gettext('page.search.search_settings') }}" class="max-sm:hidden sm:text-sm max-sm:cursor-pointer js-search-filter-settings max-sm:fixed max-sm:top-0 max-sm:bottom-0 max-sm:left-0 max-sm:right-0 max-sm:z-[999999999] max-sm:bg-[rgba(230,230,230,0.7)] max-sm:p-4 sm:w-1/4 sm:max-w-[240px] sm:shrink-0 md:pr-6 sm:pr-3" onclick="if(event.target === event.currentTarget) { event.preventDefault(); event.stopPropagation(); document.querySelector('.js-search-filter-settings').classList.add('max-sm:hidden'); document.body.style.overflow = 'unset' }">
+        <div class="max-sm:cursor-auto max-sm:shadow-2xl max-sm:rounded-xl max-sm:absolute max-sm:top-4 max-sm:bottom-4 max-sm:left-4 max-sm:right-4 max-sm:bg-white max-sm:p-4 max-sm:overflow-y-auto max-sm:mx-auto max-sm:max-w-[700px]">
+          <div class="flex justify-between items-center mb-4 sm:hidden">
+            <div class="font-bold text-lg">{{ gettext('page.search.search_settings') }}</div>
+            <div class="">
+              <button class="opacity-50 focus:opacity-80 hover:opacity-100" type="submit" onclick="event.preventDefault(); event.stopPropagation(); document.querySelector('.js-search-filter-settings').classList.add('max-sm:hidden'); document.body.style.overflow = 'unset'">✕</button>
+            </div>
+          </div>
+
+          <button class="px-4 py-1 bg-[#0195ff] text-white rounded hover:bg-blue-600 mb-4" type="submit">{{ gettext('page.search.submit') }}</button>
+          <span class="js-spinner hidden opacity-50 mb-[-5px] ml-1 text-xl text-[#555] inline-block icon-[svg-spinners--ring-resize]"></span>
+
+          {% if search_dict.had_primary_es_timeout and search_dict.max_search_aarecords_reached %}
+            <div class="mb-4 text-xs text-gray-500">
+              ❌ {{ gettext('page.search.too_long_broad_query') }}
+            </div>
+          {% elif search_dict.had_es_timeout %}
+            <div class="mb-4 text-xs text-gray-500 max-sm:hidden">
+              ❌ {{ gettext('page.search.too_inaccurate', a_reload=('href="javascript:location.reload()"' | safe)) }}
+            </div>
+          {% endif %}
+
+          <div class="font-bold mb-1">{{ gettext('page.search.filters.display.header') }}</div>
+          <div>
+            <select class="pr-8 mb-4 bg-black/6.7 px-2 py-1 rounded max-w-full" name="display">
+              <option value="">{{ gettext('page.search.filters.display.list') }}</option>
+              <option value="table" {% if search_dict.display_value == 'table' %}selected{% endif %}>{{ gettext('page.search.filters.display.table') }}</option>
+            </select>
+          </div>
+
+          <div class="font-bold mb-1">{{ gettext('page.search.advanced.header') }}</div>
+          <div class="mb-4">
+            <label class="flex cursor-pointer items-start mb-1"><input type="checkbox" class="mr-1 mt-1.5 sm:mt-1" name="desc" value="1" {% if search_dict.search_desc %}checked{% endif %}><span class="mr-1 flex-grow">{{ gettext('page.search.advanced.description_comments') }}</span></label>
+
+            <div class="js-specific-terms-list"></div>
+
+            <a href="#" class="text-xs js-specific-terms-add">{{ gettext('page.search.advanced.add_specific') }}</a>
+
+            <script>
+              (function() {
+                let specificTermsNumber = 1;
+                const queryParams = Object.fromEntries(new URLSearchParams(location.search));
+
+                function makeSpecificTermsTemplate(number) {
+                  const termType = queryParams['termtype_' + number] || '';
+                  const termVal = queryParams['termval_' + number] || '';
+
+                  const newDiv = document.createElement('div');
+                  newDiv.innerHTML = '<div class="mb-1 flex items-center"><div>' + number + '.&nbsp;</div><div><select class="bg-black/6.7 px-2 py-1 rounded mb-1 w-full" name="termtype_' + number + '"><option value="">' + {{ gettext('common.specific_search_fields.select') | tojson }} + '</option><option value="title"' + (termType == 'title' ? ' selected' : '') +'>' + {{ search_dict.specific_search_fields_mapping.title | tojson }} + '</option><option value="author"' + (termType == 'author' ? ' selected' : '') +'>' + {{ search_dict.specific_search_fields_mapping.author | tojson }} + '</option><option value="publisher"' + (termType == 'publisher' ? ' selected' : '') +'>' + {{ search_dict.specific_search_fields_mapping.publisher | tojson }} + '</option><option value="edition_varia"' + (termType == 'edition_varia' ? ' selected' : '') +'>' + {{ search_dict.specific_search_fields_mapping.edition_varia | tojson }} + '</option><option value="year"' + (termType == 'year' ? ' selected' : '') +'>' + {{ gettext('page.search.advanced.field.year_published') | tojson }} + '</option><option value="original_filename"' + (termType == 'original_filename' ? ' selected' : '') +'>' + {{ search_dict.specific_search_fields_mapping.original_filename | tojson }} + '</option><option value="description_comments"' + (termType == 'description_comments' ? ' selected' : '') +'>' + {{ search_dict.specific_search_fields_mapping.description_comments | tojson }} + '</option></select><input type="field" name="termval_' + number + '" class="w-full bg-black/6.7 px-2 py-1 mr-2 rounded"></div></div>';
+                  newDiv.querySelector('input').value = termVal;
+                  return newDiv;
+                }
+
+                function createNewSpecificTermsItem() {
+                  if (specificTermsNumber >= 10) {
+                    return;
+                  }
+                  document.querySelector('.js-specific-terms-list').appendChild(makeSpecificTermsTemplate(specificTermsNumber));
+                  specificTermsNumber++;
+                }
+
+                let highestNumber = 0;
+                for (let number=9; number>=1; number--) {
+                  if (queryParams['termtype_' + number] || queryParams['termval_' + number]) {
+                    highestNumber = number;
+                    break;
+                  }
+                }
+                while (specificTermsNumber <= highestNumber) {
+                  createNewSpecificTermsItem();
+                }
+
+                document.querySelector('.js-specific-terms-add').addEventListener('click', function(event) {
+                  event.preventDefault();
+                  createNewSpecificTermsItem();
+                  return false;
+                });
+              })();
+            </script>
+          </div>
+
+          <div class="font-bold mb-1">{{ gettext('page.search.filters.content.header') }}</div>
+          <div class="mb-4">
+            {% for bucket in search_dict.aggregations.search_content_type %}
+              <input type="checkbox" class="hidden js-tristate-yes--content--{{bucket.key}}" name="content" value="{{bucket.key}}" {% if bucket.selected %}checked{% endif %}>
+              <input type="checkbox" class="hidden js-tristate-no--content--{{bucket.key}}" name="content" value="anti__{{bucket.key}}" {% if bucket.antiselected %}checked{% endif %}>
+              <button class="flex w-full text-left cursor-pointer items-start js-tristate-button--content--{{bucket.key}} {% if bucket.doc_count == 0 %}opacity-60{% endif %}"><span class="mr-1 pt-[1px] js-tristate-icon--content--{{bucket.key}}"></span><span class="mr-1 flex-grow">{{bucket.label | replace('-', '&#8209;' | safe)}}</span><span class="mt-0.5 text-sm sm:text-xs text-gray-500">{% if search_dict.had_primary_es_timeout %}~{% endif %}{{'{0:,}'.format(bucket.doc_count)}}</span></button>
+              <script>window.makeTristateCheckbox('content--' + {{ bucket.key | tojson }});</script>
+            {% endfor %}
+          </div>
+          {% if search_dict.search_index_short == '' %}
+            <div class="font-bold mb-1">{{ gettext('page.search.filters.filetype.header') }}</div>
+            <div class="mb-4">
+              {% for bucket in search_dict.aggregations.search_extension %}
+                <input type="checkbox" class="hidden js-tristate-yes--ext--{{bucket.key}}" name="ext" value="{{bucket.key}}" {% if bucket.selected %}checked{% endif %}>
+                <input type="checkbox" class="hidden js-tristate-no--ext--{{bucket.key}}" name="ext" value="anti__{{bucket.key}}" {% if bucket.antiselected %}checked{% endif %}>
+                <button class="flex w-full text-left cursor-pointer items-start js-tristate-button--ext--{{bucket.key}} {% if bucket.doc_count == 0 %}opacity-60{% endif %}"><span class="mr-1 pt-[2px] js-tristate-icon--ext--{{bucket.key}}"></span><span class="mr-1 flex-grow">{{bucket.label | replace('-', '&#8209;' | safe)}}</span><span class="mt-0.5 text-sm sm:text-xs text-gray-500">{% if search_dict.had_primary_es_timeout %}~{% endif %}{{'{0:,}'.format(bucket.doc_count)}}</span></button>
+                <script>window.makeTristateCheckbox('ext--' + {{ bucket.key | tojson }});</script>
+              {% endfor %}
+            </div>
+          {% endif %}
+          <div class="font-bold mb-1">{{ gettext('page.search.filters.access.header') }}</div>
+          <div class="mb-4">
+            {% for bucket in search_dict.aggregations.search_access_types %}
+              <input type="checkbox" class="hidden js-tristate-yes--acc--{{bucket.key}}" name="acc" value="{{bucket.key}}" {% if bucket.selected %}checked{% endif %}>
+              <input type="checkbox" class="hidden js-tristate-no--acc--{{bucket.key}}" name="acc" value="anti__{{bucket.key}}" {% if bucket.antiselected %}checked{% endif %}>
+              <button class="flex w-full text-left cursor-pointer items-start js-tristate-button--acc--{{bucket.key}} {% if bucket.doc_count == 0 %}opacity-60{% endif %}"><span class="mr-1 pt-[2px] js-tristate-icon--acc--{{bucket.key}}"></span><span class="mr-1 flex-grow">{% if bucket.key == 'aa_download' %}🚀 {% endif %}{{bucket.label | replace('-', '&#8209;')}}</span><span class="mt-0.5 text-sm sm:text-xs text-gray-500">{% if search_dict.had_primary_es_timeout %}~{% endif %}{{'{0:,}'.format(bucket.doc_count)}}</span></button>
+              <script>window.makeTristateCheckbox('acc--' + {{ bucket.key | tojson }});</script>
+            {% endfor %}
+          </div>
+          <div class="font-bold mb-1">{{ gettext('page.search.filters.source.header') }}</div>
+          <div class="mb-4">
+            {% for bucket in search_dict.aggregations.search_record_sources %}
+              <input type="checkbox" class="hidden js-tristate-yes--src--{{bucket.key}}" name="src" value="{{bucket.key}}" {% if bucket.selected %}checked{% endif %}>
+              <input type="checkbox" class="hidden js-tristate-no--src--{{bucket.key}}" name="src" value="anti__{{bucket.key}}" {% if bucket.antiselected %}checked{% endif %}>
+              <button class="flex w-full text-left cursor-pointer items-start js-tristate-button--src--{{bucket.key}} {% if bucket.doc_count == 0 %}opacity-60{% endif %}"><span class="mr-1 pt-[2px] js-tristate-icon--src--{{bucket.key}}"></span><div class="flex-grow flex flex-col"><div class="flex-grow flex"><span class="mr-1 flex-grow">{{bucket.label | replace('-', '&#8209;' | safe)}} [{{ bucket.key }}]</span><span class="mt-0.5 text-sm sm:text-xs text-gray-500">{% if search_dict.had_primary_es_timeout %}~{% endif %}{{'{0:,}'.format(bucket.doc_count)}}</span></div>{% if bucket.key in ["zlib","ia","isbndb","oclc","duxiu"] and search_dict.search_index_short != 'digital_lending' %}<div class="text-xs text-gray-500">{{ gettext('page.search.filters.source.scraped') }}</div>{% endif %}</div></button>
+              <script>window.makeTristateCheckbox('src--' + {{ bucket.key | tojson }});</script>
+            {% endfor %}
+          </div>
+          {% if (search_dict.aggregations.search_most_likely_language_code | length) > 0 %}
+            <div class="font-bold mb-1">{{ gettext('page.search.filters.language.header') }}</div>
+            <div class="mb-4">
+              {% for bucket in search_dict.aggregations.search_most_likely_language_code %}
+                <input type="checkbox" class="hidden js-tristate-yes--lang--{{bucket.key}}" name="lang" value="{{bucket.key}}" {% if bucket.selected %}checked{% endif %}>
+                <input type="checkbox" class="hidden js-tristate-no--lang--{{bucket.key}}" name="lang" value="anti__{{bucket.key}}" {% if bucket.antiselected %}checked{% endif %}>
+                <button class="flex w-full text-left cursor-pointer items-start js-tristate-button--lang--{{bucket.key}} {% if bucket.doc_count == 0 %}opacity-60{% endif %} {% if (loop.index > 10) and (not bucket.selected) %}hidden js-language-hidden{% endif %}"><span class="mr-1 pt-[2px] js-tristate-icon--lang--{{bucket.key}}"></span><span class="mr-1 flex-grow">{{bucket.label | replace('-', '&#8209;' | safe)}}</span><span class="mt-0.5 text-sm sm:text-xs text-gray-500">{% if search_dict.had_primary_es_timeout %}~{% endif %}{{'{0:,}'.format(bucket.doc_count)}}</span></button>
+                <script>window.makeTristateCheckbox('lang--' + {{ bucket.key | tojson }});</script>
+              {% endfor %}
+              {% if search_dict.aggregations.search_most_likely_language_code | length > 10 %}
+                <a href="#" onclick="event.preventDefault(); event.stopPropagation(); for(var el of document.querySelectorAll('.js-language-hidden')) { el.classList.remove('hidden') }; event.currentTarget.classList.add('hidden')">{{ gettext('page.search.more') }}</a>
+              {% endif %}
+            </div>
+          {% endif %}
+
+          <div class="font-bold mb-1">{{ gettext('page.search.filters.order_by.header') }}</div>
+          <div>
+            <select class="pr-8 mb-4 bg-black/6.7 px-2 py-1 rounded max-w-full" name="sort">
+              <option value="">{{ gettext('page.search.filters.sorting.most_relevant') }}</option>
+              <option value="newest" {% if search_dict.sort_value == 'newest' %}selected{% endif %}>{{ gettext('page.search.filters.sorting.newest') }} <span class="text-sm text-gray-500">{{ gettext('page.search.filters.sorting.note_publication_year') }}</span></option>
+              <option value="oldest" {% if search_dict.sort_value == 'oldest' %}selected{% endif %}>{{ gettext('page.search.filters.sorting.oldest') }} <span class="text-sm text-gray-500">{{ gettext('page.search.filters.sorting.note_publication_year') }}</span></option>
+              <option value="largest" {% if search_dict.sort_value == 'largest' %}selected{% endif %}>{{ gettext('page.search.filters.sorting.largest') }} <span class="text-sm text-gray-500">{{ gettext('page.search.filters.sorting.note_filesize') }}</span></option>
+              <option value="smallest" {% if search_dict.sort_value == 'smallest' %}selected{% endif %}>{{ gettext('page.search.filters.sorting.smallest') }} <span class="text-sm text-gray-500">{{ gettext('page.search.filters.sorting.note_filesize') }}</span></option>
+              <option value="newest_added" {% if search_dict.sort_value == 'newest_added' %}selected{% endif %}>{{ gettext('page.search.filters.sorting.newest') }} <span class="text-sm text-gray-500">{{ gettext('page.search.filters.sorting.note_open_sourced') }}</span></option>
+              <option value="oldest_added" {% if search_dict.sort_value == 'oldest_added' %}selected{% endif %}>{{ gettext('page.search.filters.sorting.oldest') }} <span class="text-sm text-gray-500">{{ gettext('page.search.filters.sorting.note_open_sourced') }}</span></option>
+            </select>
+          </div>
+          
+          <button class="px-4 py-1 bg-[#0195ff] text-white rounded hover:bg-blue-600 mb-2" type="submit">{{ gettext('page.search.submit') }}</button>
+          <span class="js-spinner hidden opacity-50 mb-[-5px] ml-1 text-xl text-[#555] inline-block icon-[svg-spinners--ring-resize]"></span>
+
+          {% if g.last_data_refresh_date %}
+            <div class="mt-4 mb-2" style="font-size: 90%; color: #555">{{ gettext('page.search.header.update_info', last_data_refresh_date=(g.last_data_refresh_date | dateformat('long')), link_open_tag=('<a href="/datasets">' | safe)) }}</div>
+
+            <div class="mt-4 mb-2" style="font-size: 90%; color: #555">{{ gettext('page.search.header.codes_explorer', a_href=(' href=\"/member_codes\"' | safe) ) }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="min-w-[0] w-full">
+        <div class="text-xs flex flex-wrap mb-4">
+          {% macro search_badge() -%}
+            <a href="#" class="sm:hidden rounded-sm flex mb-1 mr-1 border border-[#ccc] opacity-60 hover:opacity-80 aria-selected:opacity-100 custom-a" onclick="event.preventDefault(); document.querySelector('.js-search-filter-settings').classList.remove('max-sm:hidden'); document.body.style.overflow = 'hidden'">{{ caller() }}</a><span class="max-sm:hidden rounded-sm flex mb-1 mr-1 border border-[#ccc] opacity-60">{{ caller() }}</span>
+          {%- endmacro %}
+
+          {% if search_dict.search_desc %}
+            {% call search_badge() %}<span class="py-0.5 bg-[#ccc] px-1">{{ gettext('page.search.advanced.description_comments') }}</span>{% endcall %}
+          {% endif %}
+
+          {% for term_type, term_val in search_dict.specific_search_fields %}
+            {% call search_badge() %}<span class="py-0.5 bg-[#ccc] mr-1 px-1">{{ term_type }}</span><span class="py-0.5 pr-1">{{ term_val }}</span>{% endcall %}
+          {% endfor %}
+
+          {% if (search_dict.aggregations.search_content_type | selectattr("selected") | list | length) > 0 %}
+            {% call search_badge() %}<span class="py-0.5 bg-[#ccc] mr-1 px-1"><span title="Include only" class="text-[#0095ff] icon-[fluent-mdl2--box-checkmark-solid] align-text-bottom"></span> {{ gettext('page.search.filters.content.header') }}</span><span class="py-0.5 pr-1">{% for bucket in search_dict.aggregations.search_content_type | selectattr("selected") %}{% if loop.index0 > 0 %}, {% endif %}{{ bucket.label }} ({% if search_dict.had_primary_es_timeout %}~{% endif %}{{'{0:,}'.format(bucket.doc_count)}}){% endfor %}</span>{% endcall %}
+          {% endif %}
+          {% if (search_dict.aggregations.search_content_type | selectattr("antiselected") | list | length) > 0 %}
+            {% call search_badge() %}<span class="py-0.5 bg-[#ccc] mr-1 px-1"><span title="Exclude" class="text-red-500 icon-[fluent-mdl2--box-multiply-solid] align-text-bottom"></span> {{ gettext('page.search.filters.content.header') }}</span><span class="py-0.5 pr-1">{% for bucket in search_dict.aggregations.search_content_type | selectattr("antiselected") %}{% if loop.index0 > 0 %}, {% endif %}{{ bucket.label }} ({% if search_dict.had_primary_es_timeout %}~{% endif %}{{'{0:,}'.format(bucket.doc_count)}}){% endfor %}</span>{% endcall %}
+          {% endif %}
+          {% if (search_dict.aggregations.search_extension | selectattr("selected") | list | length) > 0 %}
+            {% call search_badge() %}<span class="py-0.5 bg-[#ccc] mr-1 px-1"><span title="Include only" class="text-[#0095ff] icon-[fluent-mdl2--box-checkmark-solid] align-text-bottom"></span> {{ gettext('page.search.filters.filetype.header') }}</span><span class="py-0.5 pr-1">{% for bucket in search_dict.aggregations.search_extension | selectattr("selected") %}{% if loop.index0 > 0 %}, {% endif %}{{ bucket.label }} ({% if search_dict.had_primary_es_timeout %}~{% endif %}{{'{0:,}'.format(bucket.doc_count)}}){% endfor %}</span>{% endcall %}
+          {% endif %}
+          {% if (search_dict.aggregations.search_extension | selectattr("antiselected") | list | length) > 0 %}
+            {% call search_badge() %}<span class="py-0.5 bg-[#ccc] mr-1 px-1"><span title="Exclude" class="text-red-500 icon-[fluent-mdl2--box-multiply-solid] align-text-bottom"></span> {{ gettext('page.search.filters.filetype.header') }}</span><span class="py-0.5 pr-1">{% for bucket in search_dict.aggregations.search_extension | selectattr("antiselected") %}{% if loop.index0 > 0 %}, {% endif %}{{ bucket.label }} ({% if search_dict.had_primary_es_timeout %}~{% endif %}{{'{0:,}'.format(bucket.doc_count)}}){% endfor %}</span>{% endcall %}
+          {% endif %}
+          {% if (search_dict.aggregations.search_access_types | selectattr("selected") | list | length) > 0 %}
+            {% call search_badge() %}<span class="py-0.5 bg-[#ccc] mr-1 px-1"><span title="Include only" class="text-[#0095ff] icon-[fluent-mdl2--box-checkmark-solid] align-text-bottom"></span> {{ gettext('page.search.filters.access.header') }}</span><span class="py-0.5 pr-1">{% for bucket in search_dict.aggregations.search_access_types | selectattr("selected") %}{% if loop.index0 > 0 %}, {% endif %}{% if bucket.key == 'aa_download' %}🚀 {% endif %}{{ bucket.label }} ({% if search_dict.had_primary_es_timeout %}~{% endif %}{{'{0:,}'.format(bucket.doc_count)}}){% endfor %}</span>{% endcall %}
+          {% endif %}
+          {% if (search_dict.aggregations.search_access_types | selectattr("antiselected") | list | length) > 0 %}
+            {% call search_badge() %}<span class="py-0.5 bg-[#ccc] mr-1 px-1"><span title="Exclude" class="text-red-500 icon-[fluent-mdl2--box-multiply-solid] align-text-bottom"></span> {{ gettext('page.search.filters.access.header') }}</span><span class="py-0.5 pr-1">{% for bucket in search_dict.aggregations.search_access_types | selectattr("antiselected") %}{% if loop.index0 > 0 %}, {% endif %}{% if bucket.key == 'aa_download' %}🚀 {% endif %}{{ bucket.label }} ({% if search_dict.had_primary_es_timeout %}~{% endif %}{{'{0:,}'.format(bucket.doc_count)}}){% endfor %}</span>{% endcall %}
+          {% endif %}
+          {% if (search_dict.aggregations.search_record_sources | selectattr("selected") | list | length) > 0 %}
+            {% call search_badge() %}<span class="py-0.5 bg-[#ccc] mr-1 px-1"><span title="Include only" class="text-[#0095ff] icon-[fluent-mdl2--box-checkmark-solid] align-text-bottom"></span> {{ gettext('page.search.filters.source.header') }}</span><span class="py-0.5 pr-1">{% for bucket in search_dict.aggregations.search_record_sources | selectattr("selected") %}{% if loop.index0 > 0 %}, {% endif %}{{ bucket.label }} [{{ bucket.key }}] ({% if search_dict.had_primary_es_timeout %}~{% endif %}{{'{0:,}'.format(bucket.doc_count)}}){% endfor %}</span>{% endcall %}
+          {% endif %}
+          {% if (search_dict.aggregations.search_record_sources | selectattr("antiselected") | list | length) > 0 %}
+            {% call search_badge() %}<span class="py-0.5 bg-[#ccc] mr-1 px-1"><span title="Exclude" class="text-red-500 icon-[fluent-mdl2--box-multiply-solid] align-text-bottom"></span> {{ gettext('page.search.filters.source.header') }}</span><span class="py-0.5 pr-1">{% for bucket in search_dict.aggregations.search_record_sources | selectattr("antiselected") %}{% if loop.index0 > 0 %}, {% endif %}{{ bucket.label }} [{{ bucket.key }}] ({% if search_dict.had_primary_es_timeout %}~{% endif %}{{'{0:,}'.format(bucket.doc_count)}}){% endfor %}</span>{% endcall %}
+          {% endif %}
+          {% if search_dict.sort_value != '' %}
+            {% call search_badge() %}<span class="py-0.5 bg-[#ccc] mr-1 px-1">{{ gettext('page.search.filters.order_by.header') }}</span><span class="py-0.5 pr-1">{% if search_dict.sort_value == 'newest' %}{{ gettext('page.search.filters.sorting.newest') }} <span class="text-gray-500">{{ gettext('page.search.filters.sorting.note_publication_year') }}</span>{% endif %}{% if search_dict.sort_value == 'oldest' %}{{ gettext('page.search.filters.sorting.oldest') }} <span class="text-gray-500">{{ gettext('page.search.filters.sorting.note_publication_year') }}</span>{% endif %}{% if search_dict.sort_value == 'largest' %}{{ gettext('page.search.filters.sorting.largest') }} <span class="text-gray-500">{{ gettext('page.search.filters.sorting.note_filesize') }}</span>{% endif %}{% if search_dict.sort_value == 'smallest' %}{{ gettext('page.search.filters.sorting.smallest') }} <span class="text-gray-500">{{ gettext('page.search.filters.sorting.note_filesize') }}</span>{% endif %}</span>{% if search_dict.sort_value == 'newest_added' %}{{ gettext('page.search.filters.sorting.newest') }} <span class="text-gray-500">{{ gettext('page.search.filters.sorting.note_open_sourced') }}</span>{% endif %}{% if search_dict.sort_value == 'oldest_added' %}{{ gettext('page.search.filters.sorting.oldest') }} <span class="text-gray-500">{{ gettext('page.search.filters.sorting.note_open_sourced') }}</span>{% endif %}{% endcall %}
+          {% endif %}
+          {% if (search_dict.aggregations.search_most_likely_language_code | selectattr("selected") | list | length) > 0 %}
+            {% call search_badge() %}<span class="py-0.5 bg-[#ccc] mr-1 px-1"><span title="Include only" class="text-[#0095ff] icon-[fluent-mdl2--box-checkmark-solid] align-text-bottom"></span> {{ gettext('page.search.filters.language.header') }}</span><span class="py-0.5 pr-1">{% for bucket in search_dict.aggregations.search_most_likely_language_code | selectattr("selected") %}{% if loop.index0 > 0 %}, {% endif %}{{ bucket.label }} ({% if search_dict.had_primary_es_timeout %}~{% endif %}{{'{0:,}'.format(bucket.doc_count)}}){% endfor %}</span>{% endcall %}
+          {% endif %}
+          {% if (search_dict.aggregations.search_most_likely_language_code | selectattr("antiselected") | list | length) > 0 %}
+            {% call search_badge() %}<span class="py-0.5 bg-[#ccc] mr-1 px-1"><span title="Exclude" class="text-red-500 icon-[fluent-mdl2--box-multiply-solid] align-text-bottom"></span> {{ gettext('page.search.filters.language.header') }}</span><span class="py-0.5 pr-1">{% for bucket in search_dict.aggregations.search_most_likely_language_code | selectattr("antiselected") %}{% if loop.index0 > 0 %}, {% endif %}{{ bucket.label }} ({% if search_dict.had_primary_es_timeout %}~{% endif %}{{'{0:,}'.format(bucket.doc_count)}}){% endfor %}</span>{% endcall %}
+          {% endif %}
+        </div>
+
+        {% if ((search_input | length) == 0) and ((search_dict.specific_search_fields | length) == 0) %}
+          <div class="mb-4 p-6 overflow-hidden bg-black/5 break-words rounded">
+            {% if search_dict.search_index_short == '' %}
+              <p class="mb-4">
+                {{ gettext('page.search.results.search_downloads', count=g.header_stats.total_without_journals, a_preserve=(' href="/faq#what" ' | safe)) }}
+                {{ gettext('page.search.results.help_preserve', a_torrents=(' href="/torrents" ' | safe)) }}
+              </p>
+              <p class="mb-4">
+                {{ gettext('page.search.results.most_comprehensive', a_datasets=(' href="/datasets" ' | safe)) }}
+              </p>
+              <p class="text-sm">
+                {{ gettext('page.search.results.other_shadow_libs', email=(('<a href="/contact">' | safe + gettext('page.contact.title') + '</a>' | safe) | safe)) }}
+                {{ gettext('page.search.results.dmca', a_copyright=(' href="/copyright" ' | safe)) }}
+              </p>
+
+              <p class="max-sm:hidden text-sm text-gray-500 mt-4">
+                {{ gettext('page.search.results.shortcuts') }}
+              </p>
+            {% elif search_dict.search_index_short == 'journals' %}
+              <p class="mb-4">
+                <strong>{{ gettext('page.search.results.looking_for_papers') }}</strong>
+                {{ gettext('page.home.scidb.scihub_paused', a_paused=(' href="https://www.reddit.com/r/scihub/comments/lofj0r/announcement_scihub_has_been_paused_no_new/" target="_blank" ' | safe)) }}
+                {{ gettext('page.home.scidb.continuation') }}
+                <a href="/scidb">{{ gettext('layout.index.header.learn_more') }}</a>
+              </p>
+
+              <p>
+                You can also still use regular search. {{ gettext('page.search.results.search_journals', count=g.header_stats.journal_article, a_preserve=(' href="/faq#what" ' | safe)) }}
+              </p>
+
+              <p class="max-sm:hidden text-sm text-gray-500 mt-4">
+                {{ gettext('page.search.results.shortcuts') }}
+              </p>
+            {% elif search_dict.search_index_short == 'digital_lending' %}
+              <p class="mb-4">
+                {{ gettext('page.search.results.search_digital_lending') }}
+              </p>
+              <p class="mb-4">
+                {{ gettext('page.search.results.digital_lending_info', a_datasets=(' href="/datasets" ' | safe)) }}
+              </p>
+              <p class="">
+                {{ gettext('page.search.results.digital_lending_info_more', a_wikipedia=(' href="https://en.wikipedia.org/wiki/E-book_lending" ' | safe), a_mobileread=(' href="https://wiki.mobileread.com/wiki/EBook_Lending_Libraries" ' | safe)) }}
+              </p>
+
+              <p class="max-sm:hidden text-sm text-gray-500 mt-4">
+                {{ gettext('page.search.results.shortcuts') }}
+              </p>
+            {% elif search_dict.search_index_short == 'meta' %}
+              <p class="mb-4">
+                {{ gettext('page.search.results.search_metadata', a_request=(' href="/faq#request" ' | safe)) }}
+              </p>
+
+              <p class="mb-4">
+                {{ gettext('page.search.results.metadata_info', a_datasets=(' href="/datasets" ' | safe)) }}
+                {{ gettext('page.search.results.metadata_no_merging') }}
+              </p>
+
+              <p class="mb-4 text-sm">
+                {{ gettext('page.faq.metadata.inspiration',
+                    a_openlib=(dict(href="https://en.wikipedia.org/wiki/Open_Library") | xmlattr),
+                    a_blog=(dict(href="https://annas-archive.li/blog/blog-isbndb-dump-how-many-books-are-preserved-forever.html") | xmlattr),
+                ) }}
+              </p>
+
+              <p class="text-sm">
+                {{ gettext('page.search.results.metadata_info_more', a_wikipedia=(' href="https://en.wikipedia.org/wiki/Wikipedia:Book_sources" ' | safe)) }}
+              </p>
+
+              <p class="max-sm:hidden text-sm text-gray-500 mt-4">
+                {{ gettext('page.search.results.shortcuts') }}
+              </p>
+            {% else %}
+              <p class="">
+                {{ gettext('page.search.results.search_generic') }}
+              </p>
+
+              <p class="max-sm:hidden text-sm text-gray-500 mt-4">
+                {{ gettext('page.search.results.shortcuts') }}
+              </p>
+            {% endif %}
+          </div>
+        {% else %}
+          {% if search_dict.search_index_short == 'journals' %}
+            <div class="mb-4 p-6 overflow-hidden bg-black/5 break-words rounded">
+              <strong>{{ gettext('page.search.results.looking_for_papers') }}</strong>
+              {{ gettext('page.home.scidb.scihub_paused', a_paused=(' href="https://www.reddit.com/r/scihub/comments/lofj0r/announcement_scihub_has_been_paused_no_new/" target="_blank" ' | safe)) }}
+              {{ gettext('page.home.scidb.continuation') }}
+              <a href="/scidb">{{ gettext('layout.index.header.learn_more') }}</a>
+            </div>
+          {% elif search_dict.search_index_short == 'meta' %}
+            <div class="mb-4 p-6 overflow-hidden bg-black/5 break-words rounded">
+              <p class="mb-4">
+                {{ gettext('page.search.results.these_are_records', classname=(' class="italic"' | safe)) }}
+              </p>
+
+              <p class="mb-4">
+                {{ gettext('page.search.results.search_metadata', a_request=(' href="/faq#request" ' | safe)) }}
+              </p>
+              
+              <p class="">
+                {{ gettext('page.search.results.metadata_info', a_datasets=(' href="/datasets" ' | safe)) }}
+                {{ gettext('page.search.results.metadata_no_merging') }}
+              </p>
+            </div>
+          {% endif %}
+        {% endif %}
+
+        {% if search_dict.had_fatal_es_timeout %}
+          <p class="mt-4 font-bold">{{ gettext('page.search.results.error.header') }}</p>
+
+          <p class="mt-4">{{ gettext('page.search.results.error.unknown', a_reload=(' href="javascript:location.reload()" ' | safe), email=(('<a href="/contact">' | safe + gettext('page.contact.title') + '</a>' | safe) | safe)) }}</p>
+        {% else %}
+          {% if search_dict.had_es_timeout and (not search_dict.max_search_aarecords_reached) and ((search_dict.search_aarecords | length) > 0) %}
+            <div class="mt-4 text-sm text-gray-500 sm:hidden">
+              ❌ {{ gettext('page.search.too_inaccurate', a_reload=('href="javascript:location.reload()"' | safe)) }}
+            </div>
+          {% endif %}
+
+          {% if (search_dict.search_aarecords | length) == 0 %}
+            <div class="mt-4">
+              {% if search_dict.had_es_timeout %}
+                ❌ {{ gettext('page.search.too_inaccurate', a_reload=('href="javascript:location.reload()"' | safe)) }}
+              {% else %}
+                {{ gettext('page.search.results.none', classname=(' class="font-bold"' | safe)) }}
+
+                <div class="mt-4">
+                  {{ gettext('page.search.results.incorrectly_slow', a_attrs=(dict(href="javascript:location.reload()") | xmlattr)) }}
+                </div>
+              {% endif %}
+            </div>
+
+            {% if search_dict.search_index_short == '' %}
+              <div class="mt-4 js-not-found-additional hidden">
+                {{ gettext('page.search.found_matches.main', a_request=('href="/faq#request"' | safe), in=(((('<a class="hidden js-not-found-journals" href="/search?index=journals&q=' + (search_input | urlencode) + '">') | safe) + gettext('page.search.found_matches.journals', count=('<span class="js-not-found-journals-count">1</span>' | safe)) + (('</a><a class="hidden js-not-found-digital_lending" href="/search?index=digital_lending&q=' + (search_input | urlencode) + '">') | safe) + gettext('page.search.found_matches.digital_lending', count=('<span class="js-not-found-digital_lending-count">1</span>' | safe)) + ('</a><a class="hidden js-not-found-meta" href="/search?index=meta&q=' + (search_input | urlencode) + '">') | safe + gettext('page.search.found_matches.metadata', count=('<span class="js-not-found-meta-count">1</span>' | safe)) + ('</a>' | safe)) | safe)) }}
+              </div>
+            {% endif %}
+          {% endif %}
+
+          {% if (search_dict.search_aarecords | length) > 0 %}
+            <div class="mt-4 uppercase text-xs text-gray-500">
+              {{ gettext('page.search.results.numbers_pages', from=((search_dict.page_value-1)*search_dict.max_display_results+1), to=(((search_dict.page_value-1)*search_dict.max_display_results)+(search_dict.search_aarecords | length)), total=((search_dict.primary_hits_total_obj.value | string) + ('+' if search_dict.primary_hits_total_obj.relation == 'gte' else ''))) }}
+            </div>
+          {% endif %}
+
+          <div class="mb-4">
+            {% from 'macros/aarecord_list.html' import aarecord_list %}
+            {{ aarecord_list(search_dict.search_aarecords, table=(search_dict.display_value == 'table')) }}
+
+            {% if (search_dict.additional_search_aarecords | length) > 0 %}
+              <div class="mt-8">
+                <div class="bg-gray-100 mx-[-10px] px-[10px]">
+                  <div class="italic mt-2">{% if search_dict.max_additional_search_aarecords_reached %}{{ gettext('page.search.results.partial_more', num=(search_dict.additional_search_aarecords | length)) }}{% else %}{{ gettext('page.search.results.partial', num=(search_dict.additional_search_aarecords | length)) }}{% endif %}</div>
+
+                  {{ aarecord_list(search_dict.additional_search_aarecords, max_show_immediately=0, table=(search_dict.display_value == 'table')) }}
+                </div>
+              </div>
+            {% endif %}
+          </div>
+
+          {% if (search_dict.search_aarecords | length) > 0 %}
+            {% from 'macros/pagination.html' import pagination %}
+            <div class="mt-2 text-center hidden md:block">
+              {{ pagination(search_dict.pagination_pages_with_dots_large, search_dict.pagination_base_url, search_dict.page_value, True) }}
+            </div>
+            <div class="mt-2 text-center md:hidden">
+              {{ pagination(search_dict.pagination_pages_with_dots_small, search_dict.pagination_base_url, search_dict.page_value, False) }}
+            </div>
+          {% endif %}
+        {% endif %}
+        
+        {% if search_input != '' %}
+          <script>
+            (function() {
+              const searchInput = {{ search_input | tojson }};
+              try {
+                if (window.sessionStorage['search_counted_' + searchInput] === "1") {
+                  return;
+                }
+                window.sessionStorage['search_counted_' + searchInput] = "1";
+              } catch(e) {
+                console.error("Error with sessionStorage: ", e);
+              }
+              navigator.sendBeacon("/dyn/log_search?q=" + searchInput);
+            })();
+          </script>
+        {% endif %}
+      </div>
+    </div>
+  </form>
+
+  <script>
+    window.es_stats = {{ search_dict.es_stats_json | tojson }}
+  </script>
+{% endblock %}

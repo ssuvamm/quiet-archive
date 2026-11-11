@@ -1,0 +1,947 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-CRB9WBW5WQ"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-CRB9WBW5WQ');
+</script>
+<script type="text/javascript">
+    navigator.sayswho = (function(){
+        var ua= navigator.userAgent, tem,
+        M= ua.match(/(opera|chrome|safari|firefox|msie|trident(?=\/))\/?\s*(\d+)/i) || [];
+        if(/trident/i.test(M[1])){
+            tem=  /\brv[ :]+(\d+)/g.exec(ua) || [];
+            return 'IE '+(tem[1] || '');
+        }
+        if(M[1]=== 'Chrome'){
+            tem= ua.match(/\b(OPR|Edge)\/(\d+)/);
+            if(tem!= null) return tem.slice(1).join(' ').replace('OPR', 'Opera');
+        }
+        M= M[2]? [M[1], M[2]]: [navigator.appName, navigator.appVersion, '-?'];
+        if((tem= ua.match(/version\/(\d+)/i))!= null) M.splice(1, 1, tem[1]);
+        return M.join(' ');
+    })();
+    var isAdBlockActive = false;
+</script>
+<title>Clean code | Anna’s Archive | Anna’s Archive</title>
+<base href="/">
+<meta charset="utf-8">                             
+<meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="title" content="Clean code | Anna’s Archive">
+<meta name="description" content="Download Clean code book for free from Anna’s Archive">
+<link rel="alternate" href="https://annas-archive.cc/book/14120116" hreflang="en" />
+<meta name="robots" content="INDEX,FOLLOW" />
+<link rel="canonical" href="https://annas-archive.cc/book/14120116" />
+<script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Book",
+    "name": "Clean code",
+    "image": "https://zlib-cdn.org/images/14100000/14120116.webp",
+    "inLanguage": "Italian",
+    "isbn": "9788850334384",
+    "author": [
+                  {
+      "@type": "Person",
+      "name": "Martin",
+      "url": "https://annas-archive.cc/author/Martin"
+    },                {
+      "@type": "Person",
+      "name": "Robert Cecil",
+      "url": "https://annas-archive.cc/author/Robert Cecil"
+    }    
+  ],
+    "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": 4.0,
+      "ratingCount": 4,
+      "reviewCount": 4
+    }
+  }
+</script>
+<meta property="og:title" content="Clean code | Anna’s Archive" />
+<meta property="og:type" content="Book" />
+<meta property="og:image" content="https://zlib-cdn.org/images/14100000/14120116.webp" />
+<meta property="og:url" content="https://annas-archive.cc/book/14120116" />
+<meta property="og:site_name" content="Anna’s Archive" />
+<meta property="og:description" content="" />
+
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:url" content="https://annas-archive.cc/book/14120116"/>
+<meta name="twitter:title" content="Clean code | Anna’s Archive"/>
+<meta name="twitter:description" content=""/>
+<meta name="distribution" content="global">
+<meta http-equiv="cache-control" content="no-cache">
+<meta http-equiv="pragma" content="no-cache">
+
+<link rel="icon" href="/images/aa_favicon.ico">
+<link rel="manifest" href="/manifest.json?v=1">
+<link rel="mask-icon" href="/images/aa_favicon.ico" color="#5bbad5">
+<meta name="apple-mobile-web-app-title" content="Anna’s Archive">
+<meta name="application-name" content="Anna’s Archive">
+<meta name="theme-color" content="#ffffff">
+<meta name="format-detection" content="telephone=no">
+    
+<!-- CSS SET -->
+<!-- JS SET --> 
+<link rel="SHORTCUT ICON" href="/images/aa_favicon.ico">
+
+<link rel="stylesheet" type="text/css" href="/css/global.css?v=1" />
+<link rel="stylesheet" type="text/css" href="/css/app.min.css" />
+<link rel="stylesheet" href="/css/book-details.min.css" />
+<script type="text/javascript" src="/js/global.js"></script>
+<script type='text/javascript' src='https://platform-api.sharethis.com/js/sharethis.js#property=63e36047b0cc4a001220e688&product=inline-share-buttons' async='async'></script>
+<style>
+.st-logo, .st-disclaimer{
+    visibility: hidden !important;
+    opacity: 0 !important;
+}    
+</style>
+
+  <script>
+            window != top ? window.stop() : null;
+            
+            const Config = {"domainHost":"annas-archive.cc","BRegion":null,"Country":"undefined","accessByIp":false};
+            const CurrentUser = new User(null);
+            const CurrentClientIP = "127.0.0.1";
+            const CurrentSiteMode = 'books';
+            const proxiesToCheck = []; //for google verification
+
+
+
+            $(document).ready(function() {
+                $('.tooltip-init').tooltip({html: true})
+
+            })
+
+        </script>
+    </head>
+
+<body style="margin:0px;padding:0px;" class="books/details">
+    <table class="super-puper-main-container" border="0" cellpadding="0" cellspacing="0">
+            <tbody>
+
+            <tr style="height:10px;">
+    <td style="vertical-align: top;">
+        <div class="container-fluid">
+            <div class="row">
+                <div class="col-md-12">
+                    <div id="colorBoxes">
+                        <ul>
+                            <li class="" style="background: #49afd0;">
+                                <a class="header-main-nav-link " data-mode="books" href="/">
+                                    <span class="hidden-xs">
+                                        33,569,200 books
+                                    </span>
+                                    <span class="visible-xs">
+                                        books
+                                    </span>
+                                </a>
+                            </li>
+                            <li style="background: #8ecd51;">
+                                <a class="header-main-nav-link populate-preferred-domain" data-mode="articles" href="/articles">
+                                    <span class="hidden-xs">
+                                        84,844,242 articles
+                                    </span>
+                                    <span class="visible-xs">
+                                        articles
+                                    </span>
+                                </a>
+                            </li>
+                            <li class="visible-xs colorBoxesLink ">
+                                                             </li>
+                        </ul>
+                    </div>
+                    <div class="navbar-default navbar-right" role="navigation" style="background-color: transparent;">
+                        <div class="navbar-header">
+                            <button aria-expanded="false" aria-haspopup="true" class="dropdown navbar-toggle" data-target="#bs-example-navbar-collapse-1" data-toggle="dropdown" type="button">
+                                <span class="sr-only">
+                                    Toggle navigation
+                                </span>
+                                <span class="icon-bar">
+                                </span>
+                                <span class="icon-bar">
+                                </span>
+                                <span class="icon-bar">
+                                </span>
+                            </button>
+                        </div>
+                        <div class="navbar-collapse" id="bs-example-navbar-collapse-1" style="clear: both;">
+                            <ul class="nav navbar-nav navbar-right">
+
+                               
+                                  
+                                                                            <li class="dropdown hidden-xs" title="Dark Mode">
+                                            <a href="javascript:void(0);" onclick="document.getElementById('switchModeForm').submit()">
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="#777777" height="1.5em" viewBox="0 0 384 512"><path d="M223.5 32C100 32 0 132.3 0 256S100 480 223.5 480c60.6 0 115.5-24.2 155.8-63.4c5-4.9 6.3-12.5 3.1-18.7s-10.1-9.7-17-8.5c-9.8 1.7-19.8 2.6-30.1 2.6c-96.9 0-175.5-78.8-175.5-176c0-65.8 36-123.1 89.3-153.3c6.1-3.5 9.2-10.5 7.7-17.3s-7.3-11.9-14.3-12.5c-6.3-.5-12.6-.8-19-.8z"/></svg>
+                                            </a>
+                                        </li>                                      
+                                                                        <form id="switchModeForm" action="https://annas-archive.cc/switch-mode" method="post" style="display:none">
+                                        <input type="hidden" name="_token" value="2bjEBfcnDagyf2JaCA1iIbetQIME6Q34Lljj0lw8">                                    </form>
+                                <!-- Admin menu dropdown -->
+                                <li>
+                                </li>
+                                <!-- Moderators menu dropdown -->
+                                <!-- Search menu dropdown -->
+                                <li class="dropdown hidden-xs" id="quickSearchMenuDD">
+                                    <a aria-expanded="false" aria-haspopup="true" class="dropdown-toggle main-menu-item" data-toggle="dropdown" href="javascript:void(0)" id="quickSearchMenuDD2" role="button">
+										<svg width="18" height="18" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle;">
+										<path d="M13.6685 11.9744L10.4498 8.75548C10.9966 7.88484 11.314 6.85578 11.314 5.75142C11.314 2.62701 8.78119 0.0945129 5.6569 0.0945129C2.53262 0.0945129 0 2.62701 0 5.75142C0 8.87594 2.5325 11.4082 5.6569 11.4082C6.85874 11.4082 7.97195 11.0325 8.88797 10.394L12.0684 13.5746C12.2894 13.7954 12.5791 13.9053 12.8684 13.9053C13.1581 13.9053 13.4475 13.7954 13.6688 13.5746C14.1104 13.1325 14.1104 12.4164 13.6685 11.9744ZM5.6569 9.57545C3.54517 9.57545 1.83311 7.8635 1.83311 5.75165C1.83311 3.6398 3.54517 1.92774 5.6569 1.92774C7.76875 1.92774 9.4807 3.6398 9.4807 5.75165C9.4807 7.8635 7.76875 9.57545 5.6569 9.57545Z" fill="#444"/>
+										</svg>										
+                                    </a>
+                                    <ul class="dropdown-menu" style="padding: 0; border-top-left-radius: 4px;box-shadow: 1px 1px 4px rgba(0, 0, 0, 0.1); border: 1px solid rgba(0, 0, 0, .1);">
+                                        <li>
+                                            <form action="/s/" method="get" name="quickSearch" style="padding:20px;">
+                                                <input class="form-control" id="quickSearchInput" name="q" placeholder="Search for title, author, ISBN, publisher, md5.." type="text">
+                                                    <button class="button-search-reset" id="quickSearchReset" type="reset">
+                                                        ×
+                                                    </button>
+                                                    <button style="display: none;" type="submit">
+                                                    </button>
+                                 
+                                            </form>
+                                        </li>
+                                    </ul>
+                                </li>
+                                <!-- Site menu dropdown -->
+                                <li class="divider visible-xs" role="separator">
+                                </li>
+                                <li class="dropdown">
+                                    <a aria-expanded="true" aria-haspopup="true" class="dropdown-toggle hidden-xs main-menu-item" data-toggle="dropdown" href="javascript:void(0)" id="main-menu-dropdown" role="button">
+<svg width="18" height="18" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" style="verticle-align:middle">
+<rect y="1" width="14" height="2" rx="1" fill="#444"/>
+<rect y="6" width="14" height="2" rx="1" fill="#444"/>
+<rect y="11" width="14" height="2" rx="1" fill="#444"/>
+</svg>										
+                                    </a>
+                                    <ul class="dropdown-menu topmenu">
+								                                                            <li class="hidden-lg" title="Dark Mode">
+                                    <a href="javascript:void(0);" onclick="document.getElementById('switchModeForm').submit()">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="#777777" height="1.2em" viewBox="0 0 384 512" style="margin-left: 2%;"><path d="M223.5 32C100 32 0 132.3 0 256S100 480 223.5 480c60.6 0 115.5-24.2 155.8-63.4c5-4.9 6.3-12.5 3.1-18.7s-10.1-9.7-17-8.5c-9.8 1.7-19.8 2.6-30.1 2.6c-96.9 0-175.5-78.8-175.5-176c0-65.8 36-123.1 89.3-153.3c6.1-3.5 9.2-10.5 7.7-17.3s-7.3-11.9-14.3-12.5c-6.3-.5-12.6-.8-19-.8z"/></svg> Switch Mode
+                                    </a>
+                                </li>                                      
+                              						
+								                                        <li>
+                                            <a href="/request">
+                                                <span class="zlibicon-request">
+                                                </span>
+                                                Book Requests
+                                            </a>
+                                        </li>                                        
+                                        <li>
+                                            <a href="/article-request">
+                                                <span class="zlibicon-request">
+                                                </span>
+                                                Article Requests
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <a href="/booklists">
+                                                <span class="zlibicon-booklist">
+                                                </span>
+                                                Booklists
+                                            </a>
+                                        </li>  
+                                        <li>
+                                            <a href="/category-list">
+                                                <span class="zlibicon-categories">
+                                                </span>
+                                                Categories
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <a href="/popular">
+                                                <span class="zlibicon-popular">
+                                                </span>
+                                                Most Popular
+                                            </a>
+                                        </li>                                        
+
+
+                                        <li>
+                                            <a href="/recently">
+                                                <span class="zlibicon-recently">
+                                                </span>
+                                                Recently Added
+                                            </a>
+                                        </li>                                        
+                                        <li>
+                                            <a href="/featured">
+                                                <span class="zlibicon-popular">
+                                                </span>
+                                                Featured
+                                            </a>
+                                        </li>
+                                         
+                                    </ul>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </td>
+</tr>
+ 
+            <tr>
+    <td class="g-page-content">
+        <div class="container" style="max-width: 1000px;padding-bottom: 40px;">
+            <div class="row">
+                <div class="col-md-12 itemFullText">
+                    <style>
+                        .adFixW iframe{
+						        width:100%;
+						}
+                    </style>
+                    <div class="bcNav">
+                        <a href="/" title="Ebook library Anna’s Archive">Main</a>
+                        <i>
+                        </i>
+                        Clean code
+                    </div>
+                                        <div itemscope="" itemtype="http://schema.org/Book">
+                        <div class="row cardBooks" data-book_id="14120116" data-spelling-suggest="true" style="overflow: hidden;">
+                            <div class="col-sm-3 details-book-cover-container">
+                                <div class="details-book-cover-content">
+									                                    <a data-lightbox="image-1" data-title="Clean code" class="details-book-cover checkBookDownloaded" data-book_id="14120116" data-isbn="9788850334384,8850334389" href="https://zlib-cdn.org/images/14100000/14120116.webp" itemprop="image" style="padding: 0; text-decoration: none;pointer-events: none;">
+                                        <div class="z-book-cover">
+                                            <img src="https://zlib-cdn.org/images/14100000/14120116.webp" alt="Clean code cover" />
+                                        </div>
+                                    </a>
+																		
+                                </div>
+                            </div>
+                            <div class="col-sm-9">
+                                <h1 itemprop="name" style="color: #000; line-height: 140%;">
+                                    Clean code
+                                </h1>
+                                <i>
+                                	                                	                                    <a class="color1" href="https://annas-archive.cc/author/Martin" itemprop="author" title="Find all the author books">Martin</a>,                                                                     	                                    <a class="color1" href="https://annas-archive.cc/author/Robert Cecil" itemprop="author" title="Find all the author books">Robert Cecil</a>                                                                    </i>
+								
+                                                                <div class="book-rating-detail">
+                                    <div class="book-rating cursor-pointer">
+                                        <span class="book-rating-interest-score ">
+                                            4.0
+                                        </span>
+                                        /
+                                        <span class="book-rating-quality-score ">
+                                            5.0
+                                        </span>
+                                    </div>
+
+                                    <div class="book-comments-info">0 comments</div>
+
+
+<div class="bookmarks" data-book_id="14120116">
+    <i class="icon-heart  btn-save-favorite" data-id="14120116" title="Mark the book you like best"></i>
+     <i class="icon-bookmark btn-booklists " title="Add the book to your personal themed book collection and share it with your community"></i>
+</div>
+                                   
+            
+
+
+                                </div>
+                                <div id="bookDescriptionBox" itemprop="reviewBody" style="padding:10px 0; font-size:10pt">
+                                     Download Clean code book for free from Anna’s Archive                                    </br>
+                                </div>
+                                <div style="overflow: hidden; zoom: 1; margin-top: 30px;">
+                                    <div class="bookDetailsBox">
+                                                                                <div class="row">
+                                        <div class="col-md-12">
+                                                Request Code : <span id="reqcode" class="text-success">ZLIBIO2420226</span> <a class="text-primary copyToClipboard" title="Copy Request Code" data-target="#reqcode"><i class="glyphicon glyphicon-copy"></i></a>
+                                        </div>
+                                        </div>
+                                                                                <div class="bookProperty property_categories">
+                                            <div class="property_label">
+                                                Categories:
+                                            </div>
+                                            <div class="property_value ">
+                                                                                               
+                                            </div>
+                                        </div>
+                                                                                <div class="bookProperty property_year">
+                                            <div class="property_label">
+                                                Year:
+                                            </div>
+                                            <div class="property_value ">
+                                                2018
+                                            </div>
+                                        </div>
+                                                                                                                        <div class="bookProperty property_publisher">
+                                            <div class="property_label">
+                                                Publisher:
+                                            </div>
+                                            <div class="property_value ">
+                                                Apogeo
+                                            </div>
+                                        </div>
+                                                                                <div class="bookProperty property_language">
+                                            <div class="property_label">
+                                                Language:
+                                            </div>
+                                            <div class="property_value text-capitalize">
+                                                Italian
+                                            </div>
+                                        </div>
+                                                                                <div class="bookProperty property_pages">
+                                            <div class="property_label">
+                                                Pages:
+                                            </div>
+                                            <div class="property_value ">
+                                                <span title="Pages paperback">
+                                                    435
+                                                </span>
+                                            </div>
+                                        </div>
+                                                                                                                        <div class="bookProperty property_isbn 10">
+                                            <div class="property_label">
+                                                ISBN 10:
+                                            </div>
+                                            <div class="property_value ">
+                                                8850334389
+                                            </div>
+                                        </div>
+                                                                                                                        <div class="bookProperty property_isbn 13">
+                                            <div class="property_label">
+                                                ISBN 13:
+                                            </div>
+                                            <div class="property_value ">
+                                                9788850334384
+                                            </div>
+                                        </div>
+                                                                                                                        <div class="bookProperty property_isbn">
+                                            <div class="property_label">
+                                                ISBN:
+                                            </div>
+                                            <div class="property_value ">
+                                                9788850334384,8850334389
+                                            </div>
+                                        </div>
+                                                                                                                        
+
+                                                                                <div class="bookProperty property_user_tags" style="display: none;">
+                                            <div class="property_label">
+                                                Your tags:
+                                            </div>
+                                            <div class="property_value ">
+                                            	Software - Progettazione;Software - Affidabilità
+                                            </div>
+                                        </div>
+                                        
+                                        
+                                    </div>
+                                   
+                                </div>
+                                <div class="sharethis-inline-share-buttons" style="margin-top:1rem;"></div>
+                            </div>
+                        </div>
+									
+							
+                        <div style="margin-top: 30px; margin-bottom: 15px;">
+                            <div class="details-buttons-container pull-left">
+                                        
+                                        								
+
+ <div class="book-details-button">
+   <div class="btn-group">
+      <a class="btn btn-primary dlButton addDownloadedBook"  href="https://t.me/Brea_The_Book" rel="nofollow, noreferrer" target="_blank">
+      <i class="zlibicon-download"></i>Request this book 
+      </a>
+   </div>
+</div>								
+						
+								
+                                                                             
+                                        									
+ <div class="book-details-button">
+   <div class="btn-group">
+      <a class="btn btn-primary dlButton addDownloadedBook" href="https://t.me/Brea_The_Book" rel="nofollow, noreferrer" target="_blank">
+		<i class="zlibicon-paper-airplane"></i>
+     Official сhannel 
+      </a>
+   </div>
+</div>								
+<div class="book-details-button">
+   <div class="btn-group">
+      <a class="btn btn-primary dlButton addDownloadedBook" href="https://twitter.com/ZLib_Official" rel="nofollow, noreferrer" target="_blank">
+<svg width="18" height="18" viewBox="0 0 25 25" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle;">
+<rect width="25" height="25"/>
+<path d="M14.4821 11.6218L21.0389 4H19.4852L13.7919 10.6179L9.24467 4H4L10.8763 14.0074L4 22H5.55385L11.5661 15.0113L16.3683 22H21.613L14.4821 11.6218ZM6.11371 5.16972H8.50031L19.4859 20.8835H17.0993L6.11371 5.16972Z" fill="white"/>
+</svg>		  
+                                          Follow Us 
+      </a>
+   </div>
+</div>	 
+								
+								
+<div class="book-details-button">
+                <div class="btn-group">
+                    <button type="button" class="btn btn-default dropdown-toggle button-paperback" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                        Paperback <span class="caret"></span>
+                    </button>
+                    <ul class="dropdown-menu">
+                        <div class="menu-content menu-content_paperback">
+							                            <div class="menu-row">
+                                <a class="menu__link_paperback" href="https://amazon.com/s?k=Clean+code+Martin" target="_blank" rel="nofollow noopener noreferrer">
+                                        Amazon                                    </a>
+                                </div>
+                                <div class="menu-row">
+                                    <a class="menu__link_paperback" href="https://www.barnesandnoble.com/s/Clean+code+Martin" target="_blank" rel="nofollow noopener noreferrer">
+                                        Barnes &amp; Noble                                    </a>
+                                </div>
+                                <div class="menu-row">
+                                    <a class="menu__link_paperback" href="https://bookshop.org/search?keywords=Clean+code+Martin" target="_blank" rel="nofollow noopener noreferrer">
+                                        Bookshop.org                                    </a>
+                                </div>
+                            
+                        </div>
+                    </ul>
+                </div>
+            </div>									
+													
+								
+																
+								
+
+                            </div>
+                            <div style="clear: both;">
+                            </div>
+                        </div>
+							
+<div><script data-cfasync="false" async type="text/javascript" src="//zn.dovishliegier.com/tEm7cUdkAfO2p8HB/119107"></script></div>					
+												
+
+                    <h2 id="comments" class="color1" style="margin-top:20px;">
+                        Comments of this book
+                    </h2>
+                    <div style="background: #49AFD0; height:2px; margin-bottom: 20px;">
+                    </div>
+                        <div>
+          <div class="alert alert-warning">There are no comments yet.</div>
+
+<div>
+        </div>
+
+
+
+
+                            
+                        </div>
+
+
+
+                        <div id="shareToTooltipsContainer">
+                        </div>
+                    </div>
+                    <style>
+                        .tooltip-inner {
+        max-width: 220px;
+    }
+                    </style>
+                    <script type="text/javascript">
+                        const availableTags = [];
+    const CurrentBook = new Book({"id":"14120116","title":"Clean code","termsHash":"1aba42f8eea1ab2e42e3fcba33db7610"})
+    const CurrentBookRating = new BookRating(CurrentUser)
+    const $tagsInput = $('#inputTags')
+    const tags = $tagsInput.length ? new TagsInput($tagsInput, CurrentUser, CurrentBook.id, availableTags) : null
+
+    
+    $(function () {
+
+        // read more
+        var height = 300;
+        if ($('.termsCloud').height() > 0)
+        {
+            height = height - $('.termsCloud').height();
+        }
+
+        if (height < 225) {
+            height = 225; // min height
+        }
+
+        // prevent bad line-brake
+        height = Math.floor(height / parseFloat($('#bookDescriptionBox').css('line-height'))) * parseFloat($('#bookDescriptionBox').css('line-height')) + 10; //10 - padding-bottom of box
+
+        if ($('#bookDescriptionBox').height() > height)
+        {
+            $('#bookDescriptionBox').css('overflow', 'hidden');
+            $('#bookDescriptionBox').css('height', height);
+            $('<div style="text-align:center; cursor:pointer;font-size: 12px; height:25px;" class="moreBtn"><div style="display:inline-block;border-top: 1px dashed #333; width:75%; margin-top: 15px;"><span style="display:inline-block;position:relative;top:-13px;padding:0 30px; background: #F6F6F6;">click to read more</span></div></div>').insertAfter("#bookDescriptionBox");
+        }
+
+        $('.moreBtn, #bookDescriptionBox').click(function () {
+            $('#bookDescriptionBox').css('height', 'auto');
+            $('#bookDescriptionBox').css('overflow', 'auto');
+            $('.moreBtn').remove();
+        });
+
+        const moderationBlocks = {}
+        const isMobile = isTouchDevice()
+      
+    });
+
+
+
+
+
+        // book rating
+        CurrentBookRating.initTooltip($('.book-rating-detail .book-rating'))
+        CurrentBookRating.initChoiceContainerEvents();
+        CurrentBookRating.checkExistsScoreForBook(CurrentBook.id, CurrentBook.data.termsHash, function (hasScore) {
+            if (hasScore) {
+                $('.book-rating-detail .book-rating').addClass('book-appreciated')
+            }
+        })
+        $(document).on('click', '.book-rating-detail .book-rating.cursor-pointer', function () {
+            if (CurrentBookRating.tooltipEl) {
+                CurrentBookRating.tooltipEl.tooltip('hide')
+            }
+            CurrentBookRating.loadUserScores(CurrentBook.id, CurrentBook.data.termsHash);
+        });
+
+        $(document).on('click', '.book-choice-rating .stars-list', function(e) {
+            if (!$(e.target).hasClass('book-rating-star') || $(this).data('disabled')) {
+                return
+            }
+
+            const $that = $(this)
+            const $bookRatingEl = $('.book-rating-detail .book-rating')
+            const $ratingEl = $('.book-choice-rating')
+            const $ratingOverlayEl = $ratingEl.find('.overlay-post-score')
+            const $spinnerEl = $('#bookChoiceRatingtFloatingSpinner')
+
+            const data = {
+                'bookId': $that.data('id'),
+                'type': $that.data('type'),
+                'score': $that.find('.active-choice').length
+            }
+
+            if ($that.data('score') == data.score) {
+                return
+            }
+
+            $spinnerEl.css({'top': '-10px'})
+            $that.after($spinnerEl)
+
+            $ratingOverlayEl.show()
+            $that.data('disabled', 1)
+
+            $that.fadeTo(100, 0, function () {
+                CurrentBookRating.postScore(data, $spinnerEl, (result) => {
+                    $ratingOverlayEl.hide()
+                    $that.fadeTo(300, 1)
+                    $that.data('disabled', 0)
+
+                    if (!result.success) {
+                        return
+                    }
+
+                    $that.data('score', data.score)
+                    $that.find('.active, .active-none').removeClass('active active-none')
+                    $that.find('.active-choice').addClass('active')
+
+                    if ($that.data('id') != CurrentBook.id) {
+                        return
+                    }
+
+                    if (result.avg.interest > 0) {
+                        $bookRatingEl.addClass('book-appreciated')
+                        $('.book-rating-interest-score')
+                            .removeClass('none')
+                            .text(parseFloat(result.avg.interest).toFixed(1))
+                    }
+                    if (result.avg.quality > 0) {
+                        $bookRatingEl.addClass('book-appreciated')
+                        $('.book-rating-quality-score')
+                            .removeClass('none')
+                            .text(parseFloat(result.avg.quality).toFixed(1))
+                    }
+                })
+            })
+        })
+
+
+
+
+    function iOSversion()
+    {
+        if (/iP(hone|od|ad)/.test(navigator.userAgent)) {
+            const v = (navigator.appVersion).match(/OS (\d+)_(\d+)_?(\d+)?/)
+            return [parseInt(v[1], 10), parseInt(v[2], 10), parseInt(v[3] || 0, 10)]
+        }
+
+        return [];
+    }
+
+
+
+ </script>
+
+                    <div class="books-mosaic" style="display: none">
+                        <h2 class="color1" style="margin-top:20px;overflow: hidden;">
+                            <span style="float:left;">
+                                You may be interested in
+                            </span>
+                        </h2>
+                        <div style="background: #49AFD0; height:2px;  margin-bottom: 20px;">
+                        </div>
+                        <div id="booksMosaicBoxContainer">
+                        </div>
+                        <script id="booksMosaicBoxTemplate" type="text/x-handlebars-template">
+                            <div id="bMosaicBox">
+        {{#each data.books}}
+            <div class="brick pull-left" style="width:14%;">
+                <a class="book-loading"  href="{{this.url}}" title="{{this.title}}">
+                    <div class="z-book-none-cover medium recommended checkBookDownloaded" {{{this.coverData}}} data-book_id="{{this.id}}" data-isbn="{{this.isbn}}"></div>
+                    <div class="z-book-cover checkBookDownloaded" data-book_id="{{this.id}}" data-isbn="{{this.isbn}}">
+                        <img src="{{this.cover}}" class="bMosaicCover bgrid-item item" loading="lazy" alt="{{this.title}} cover" />
+                    </div>
+                </a>
+            </div>
+        {{/each}}
+        </div>
+                        </script>
+                        <style>
+                            .bMosaicBox { min-height: 100vh }
+        #booksMosaicBoxContainer #bMosaicBox {
+            display: none;
+        }
+        #booksMosaicBoxContainer #bMosaicBox .brick a {
+            display: block;
+            text-decoration: none;
+        }
+        #booksMosaicBoxContainer #bMosaicBox .bMosaicCover {
+            width: 100%;
+        }
+
+        .book-loading { position: relative }
+
+        .book-loading > div:nth-child(2) {
+            opacity: 0;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #bMosaicBox .c-book-title {
+            max-height: 60px;
+        }
+
+        @keyframes toggleOpacity {
+            from { opacity: 1 }
+            to { opacity: 0 }
+        }
+                        </style>
+
+                    </div>
+
+
+
+
+                </div>
+            </div>
+        </div>
+    </td>
+</tr>
+
+
+            <tr>
+    <td id="footer" valign="top">
+        <div class="container-fluid">
+            <!-- footer begin -->
+            <div class="row ">
+                <div class="footer-copyright w-5-hide w-3-1-show-inline">
+                    <span class="w-5-hide w-1-1-show p-left-0">
+                        Since 2009.
+                    </span>
+					                    <span class="w-3-show w-1-1-hide p-left-0">
+                        Free ebooks since 2009.
+                    </span>
+					                </div>
+
+                <div class="footer-copyright w-3-1-show">
+					                    <span class="w-5-show w-3-hide p-left-0">
+                        Since 2018.
+                    </span>
+					                    <span class="">
+                        <a href="https://annas-archive.cc/pages/terms-of-use">Terms</a>
+                    </span>  
+					<span class="hidden">
+                        <a href="https://annas-archive.cc/pages/disclaimer">Disclaimer</a>
+                    </span>  					
+										 <span class="">
+                        <a href="https://annas-archive.cc/faq">FAQ</a>
+                    </span>  
+										                </div>
+                <div class="footer-right w-4-1-left">
+                    <div class="footer-nav-right" role="navigation">
+                        <ul class="nav navbar-nav">
+                            	 
+                            <li class="w-4-p-left-0">
+                                <a href="https://t.me/Brea_The_Book" rel="nofollow, noreferrer" target="_blank">
+                                    <i class="glyphicon glyphicon-send"></i>
+                                    Official сhannel
+                                </a>
+                            </li>   
+                                                  
+                            <li class="w-4-p-left-0">
+                                <a href="https://annas-archive.cc/pages/privacy">
+                                    Privacy
+                                </a>
+                            </li>
+                            <li>
+                                <a href="https://annas-archive.cc/dmca-contact">
+                                    DMCA
+                                </a>
+                            </li>   
+							 
+                            <li>
+                                <a href="https://annas-archive.cc">
+                                    Anna’s Archive
+                                </a>
+                            </li>							
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div id="tg-connect-modal" style="display: none">
+                <div class="tg-connect-modal-content">
+                </div>
+            </div>
+        </div>
+    </td>
+</tr>
+            </tbody>
+        </table>
+
+        <!-- icons preload hack -->
+        <i class="zlibicon-check" style="font-size: 1px; visibility: hidden; position: absolute; top: 0; left: 0;"></i>
+
+        <script>
+$('#vip_download').on('click',function(){
+	$(this).attr("disabled", true);
+	$(this).css("pointer-events", 'none');
+	setTimeout(function(){
+		$(this).attr("disabled", false);
+		$(this).css("pointer-events", 'all');
+	},5000)
+})
+</script>
+<script src="/js/freewall.js" type="text/javascript"></script>
+<script>
+    $(document).ready(function() {
+            const booksMosaicBoxTemplate = Handlebars.compile(document.getElementById('booksMosaicBoxTemplate').innerHTML)
+            const data = new ZLibraryModelList({"books":[{"id":40865,"isbn":"2020057346,2020057347,9780593336823,9780593336830","url":"https:\/\/annas-archive.cc\/book\/40865","title":"The Love Hypothesis A Novel plus bonus 16th chapter","cover":"https:\/\/zlib-cdn.org\/images\/0\/40865.webp","coverData":"data-id=\"40865\" data-title=\"The Love Hypothesis A Novel plus bonus 16th chapter\" data-author=\"Ali Hazelwood\""},{"id":13640839,"isbn":"9780735211308","url":"https:\/\/annas-archive.cc\/book\/13640839","title":"Atomic Habits","cover":"https:\/\/zlib-cdn.org\/images\/13600000\/13640839.webp","coverData":"data-id=\"13640839\" data-title=\"Atomic Habits\" data-author=\"James Clear\""},{"id":16952122,"isbn":"9781473537804,9781847941831,1473537800","url":"https:\/\/annas-archive.cc\/book\/16952122","title":"Atomic habits: an easy and proven way to build good habits and break bad ones","cover":"https:\/\/zlib-cdn.org\/images\/16900000\/16952122.webp","coverData":"data-id=\"16952122\" data-title=\"Atomic habits: an easy and proven way to build good habits and break bad ones\" data-author=\"Clear, James\""},{"id":52752,"isbn":"9781949759228","url":"https:\/\/annas-archive.cc\/book\/52752","title":"The Mountain is You","cover":"https:\/\/zlib-cdn.org\/images\/0\/52752.webp","coverData":"data-id=\"52752\" data-title=\"The Mountain is You\" data-author=\"Brianna Wiest\""},{"id":40945,"isbn":null,"url":"https:\/\/annas-archive.cc\/book\/40945","title":"the SPANISH Love Deception - Full version","cover":"https:\/\/zlib-cdn.org\/images\/0\/40945.webp","coverData":"data-id=\"40945\" data-title=\"the SPANISH Love Deception - Full version\" data-author=\"elena armas\""},{"id":17341798,"isbn":"0140280197,9780140280197","url":"https:\/\/annas-archive.cc\/book\/17341798","title":"The 48 Laws of Power","cover":"https:\/\/zlib-cdn.org\/images\/17300000\/17341798.webp","coverData":"data-id=\"17341798\" data-title=\"The 48 Laws of Power\" data-author=\"Robert Greene\""},{"id":17064492,"isbn":"9798683546595","url":"https:\/\/annas-archive.cc\/book\/17064492","title":"Haunting Adeline PDF","cover":"https:\/\/zlib-cdn.org\/images\/17000000\/17064492.webp","coverData":"data-id=\"17064492\" data-title=\"Haunting Adeline PDF\" data-author=\"H. D. Carlton\""},{"id":17831971,"isbn":null,"url":"https:\/\/annas-archive.cc\/book\/17831971","title":"God of Fury","cover":"https:\/\/zlib-cdn.org\/images\/17800000\/17831971.webp","coverData":"data-id=\"17831971\" data-title=\"God of Fury\" data-author=\"Rina Kent\""},{"id":17091959,"isbn":"9781949759297","url":"https:\/\/annas-archive.cc\/book\/17091959","title":"A Gentle Reminder","cover":"https:\/\/zlib-cdn.org\/images\/17000000\/17091959.webp","coverData":"data-id=\"17091959\" data-title=\"A Gentle Reminder\" data-author=\"Bianca Sparacino\""},{"id":16953824,"isbn":"9781915593009, 191559300X","url":"https:\/\/annas-archive.cc\/book\/16953824","title":"Icebreaker","cover":"https:\/\/zlib-cdn.org\/images\/16900000\/16953824.webp","coverData":"data-id=\"16953824\" data-title=\"Icebreaker\" data-author=\"Hannah Grace\""},{"id":45943,"isbn":"2021026243,2021026244,9780593200148,9780593200155","url":"https:\/\/annas-archive.cc\/book\/45943","title":"Weather Girl","cover":"https:\/\/zlib-cdn.org\/images\/0\/45943.webp","coverData":"data-id=\"45943\" data-title=\"Weather Girl\" data-author=\"Rachel Lynn Solomon\""},{"id":17346304,"isbn":"9781728290751,1728290759","url":"https:\/\/annas-archive.cc\/book\/17346304","title":"My Fault","cover":"https:\/\/zlib-cdn.org\/images\/17300000\/17346304.webp","coverData":"data-id=\"17346304\" data-title=\"My Fault\" data-author=\"Mercedes Ron\""},{"id":16947891,"isbn":"9781471156267, 1471156265, 9781471156274, 1471156273, 9781471158254, 147115825X","url":"https:\/\/annas-archive.cc\/book\/16947891","title":"It Ends with Us","cover":"https:\/\/zlib-cdn.org\/images\/16900000\/16947891.webp","coverData":"data-id=\"16947891\" data-title=\"It Ends with Us\" data-author=\"Colleen Hoover\""},{"id":17743836,"isbn":null,"url":"https:\/\/annas-archive.cc\/book\/17743836","title":"King of Greed ARC","cover":"https:\/\/zlib-cdn.org\/images\/17700000\/17743836.webp","coverData":"data-id=\"17743836\" data-title=\"King of Greed ARC\" data-author=\"Ana Huang\""},{"id":17849047,"isbn":null,"url":"https:\/\/annas-archive.cc\/book\/17849047","title":"Heartstopper Volume 5","cover":"https:\/\/zlib-cdn.org\/images\/17800000\/17849047.webp","coverData":"data-id=\"17849047\" data-title=\"Heartstopper Volume 5\" data-author=\"Alice Oseman\""},{"id":16770397,"isbn":"9781735056654, 1735056650","url":"https:\/\/annas-archive.cc\/book\/16770397","title":"Twisted Love - Special Edition","cover":"https:\/\/zlib-cdn.org\/images\/16700000\/16770397.webp","coverData":"data-id=\"16770397\" data-title=\"Twisted Love - Special Edition\" data-author=\"Ana Huang\""},{"id":16569162,"isbn":"9781945796067","url":"https:\/\/annas-archive.cc\/book\/16569162","title":"101 Essays That Will Change The Way You Think","cover":"https:\/\/zlib-cdn.org\/images\/16500000\/16569162.webp","coverData":"data-id=\"16569162\" data-title=\"101 Essays That Will Change The Way You Think\" data-author=\"Brianna Wiest\""},{"id":17199763,"isbn":"9780063250833,0063250837","url":"https:\/\/annas-archive.cc\/book\/17199763","title":"Yellowface","cover":"https:\/\/zlib-cdn.org\/images\/17100000\/17199763.webp","coverData":"data-id=\"17199763\" data-title=\"Yellowface\" data-author=\"R. F. Kuang\""},{"id":17807118,"isbn":"9781915593009, 191559300X","url":"https:\/\/annas-archive.cc\/book\/17807118","title":"Icebreaker","cover":"https:\/\/zlib-cdn.org\/images\/17800000\/17807118.webp","coverData":"data-id=\"17807118\" data-title=\"Icebreaker\" data-author=\"Grace, Hannah\""},{"id":14932,"isbn":"1108457738,9781108457736","url":"https:\/\/annas-archive.cc\/book\/14932","title":"English Grammar in Use Supplementary Exercises Book with Answers: To Accompany English Grammar in Use Fifth Edition","cover":"https:\/\/zlib-cdn.org\/images\/0\/14932.webp","coverData":"data-id=\"14932\" data-title=\"English Grammar in Use Supplementary Exercises Book with Answers: To Accompany English Grammar in Use Fifth Edition\" data-author=\"Louise Hashemi, Raymond Murphy\""},{"id":17354653,"isbn":"9781408725795,1408725797","url":"https:\/\/annas-archive.cc\/book\/17354653","title":"Love Theoretically","cover":"https:\/\/zlib-cdn.org\/images\/17300000\/17354653.webp","coverData":"data-id=\"17354653\" data-title=\"Love Theoretically\" data-author=\"Ali Hazelwood\""},{"id":17182831,"isbn":null,"url":"https:\/\/annas-archive.cc\/book\/17182831","title":"The Predator","cover":"https:\/\/zlib-cdn.org\/images\/17100000\/17182831.webp","coverData":"data-id=\"17182831\" data-title=\"The Predator\" data-author=\"RuNyx,\""},{"id":17661514,"isbn":"1949759229, 9781949759228","url":"https:\/\/annas-archive.cc\/book\/17661514","title":"The Mountain Is You: Transforming Self-Sabotage Into Self-Mastery","cover":"https:\/\/zlib-cdn.org\/images\/17600000\/17661514.webp","coverData":"data-id=\"17661514\" data-title=\"The Mountain Is You: Transforming Self-Sabotage Into Self-Mastery\" data-author=\"Brianna Wiest\""},{"id":452,"isbn":"9781722526245","url":"https:\/\/annas-archive.cc\/book\/452","title":"Think and Grow Rich","cover":"https:\/\/zlib-cdn.org\/images\/0\/452.webp","coverData":"data-id=\"452\" data-title=\"Think and Grow Rich\" data-author=\"Napoleon Hill\""},{"id":17822203,"isbn":"0140280197","url":"https:\/\/annas-archive.cc\/book\/17822203","title":"48 Laws of Power","cover":"https:\/\/zlib-cdn.org\/images\/17800000\/17822203.webp","coverData":"data-id=\"17822203\" data-title=\"48 Laws of Power\" data-author=\"Greene, Robert\""},{"id":17065612,"isbn":"9781957635002,1957635002","url":"https:\/\/annas-archive.cc\/book\/17065612","title":"Haunting Adeline [English]","cover":"https:\/\/zlib-cdn.org\/images\/17000000\/17065612.webp","coverData":"data-id=\"17065612\" data-title=\"Haunting Adeline [English]\" data-author=\"Carlton, H. D.\""},{"id":17901592,"isbn":null,"url":"https:\/\/annas-archive.cc\/book\/17901592","title":"House of flame and Shadow","cover":"https:\/\/zlib-cdn.org\/images\/17900000\/17901592.webp","coverData":"data-id=\"17901592\" data-title=\"House of flame and Shadow\" data-author=\"Sarah J. Maas\""},{"id":13640815,"isbn":"9780735211308","url":"https:\/\/annas-archive.cc\/book\/13640815","title":"atomic habits","cover":"https:\/\/zlib-cdn.org\/images\/13600000\/13640815.webp","coverData":"data-id=\"13640815\" data-title=\"atomic habits\" data-author=\"James clear\""},{"id":659,"isbn":"0811204812,9780811204811","url":"https:\/\/annas-archive.cc\/book\/659","title":"No Longer Human","cover":"https:\/\/zlib-cdn.org\/images\/0\/659.webp","coverData":"data-id=\"659\" data-title=\"No Longer Human\" data-author=\"Osamu Dazai\""},{"id":14055098,"isbn":"1292041005,9781292041001","url":"https:\/\/annas-archive.cc\/book\/14055098","title":"Essentials of Oceanography","cover":"https:\/\/zlib-cdn.org\/images\/14000000\/14055098.webp","coverData":"data-id=\"14055098\" data-title=\"Essentials of Oceanography\" data-author=\"Trujillo  Alan\""},{"id":14270744,"isbn":",","url":"https:\/\/annas-archive.cc\/book\/14270744","title":"The art of laziness","cover":"https:\/\/zlib-cdn.org\/images\/14200000\/14270744.webp","coverData":"data-id=\"14270744\" data-title=\"The art of laziness\" data-author=\"Peter Taylor\""},{"id":13448997,"isbn":"9789020550818,9789020550825,9789020550832","url":"https:\/\/annas-archive.cc\/book\/13448997","title":"It starts with Us","cover":"https:\/\/zlib-cdn.org\/images\/13400000\/13448997.webp","coverData":"data-id=\"13448997\" data-title=\"It starts with Us\" data-author=\"Hoover, Colleen\""},{"id":5015,"isbn":"1600589510,9781600589515","url":"https:\/\/annas-archive.cc\/book\/5015","title":"Easy Drawing: Simple step-by-step lessons for learning to draw in more than just pencil (Volume 2) (Art Made Easy, 2)","cover":"https:\/\/zlib-cdn.org\/images\/0\/5015.webp","coverData":"data-id=\"5015\" data-title=\"Easy Drawing: Simple step-by-step lessons for learning to draw in more than just pencil (Volume 2) (Art Made Easy, 2)\" data-author=\"Chelsea Ward\""},{"id":17432378,"isbn":"1957464038, 9781957464039","url":"https:\/\/annas-archive.cc\/book\/17432378","title":"Twisted Love (Twisted Book 1)","cover":"https:\/\/zlib-cdn.org\/images\/17400000\/17432378.webp","coverData":"data-id=\"17432378\" data-title=\"Twisted Love (Twisted Book 1)\" data-author=\"Ana Huang\""},{"id":4814,"isbn":"9781472908384,9781472908377,9781472908391","url":"https:\/\/annas-archive.cc\/book\/4814","title":"In God's Hands: The Archbishop of Canterbury's Lent Book 2015","cover":"https:\/\/zlib-cdn.org\/images\/0\/4814.webp","coverData":"data-id=\"4814\" data-title=\"In God's Hands: The Archbishop of Canterbury's Lent Book 2015\" data-author=\"Desmond Tutu\""}] }).getAll()
+
+            // check if we have images
+            if (!$.isArray(data.books) || !data.books.length) {
+                return
+            }
+
+            $('#booksMosaicBoxContainer').closest('.books-mosaic').show()
+
+            // render template
+            $('#booksMosaicBoxContainer').html(booksMosaicBoxTemplate({data: data}))
+
+            // init mosaic
+            $('#bMosaicBox').css('display', 'block')
+            const wall = new Freewall('#bMosaicBox')
+            wall.reset({
+                selector: '.brick',
+                keepOrder: false,
+                animate: true,
+                cellW: $($('.brick')[0]).outerWidth(),
+                cellH: 'auto',
+                gutterX: 8,
+                gutterY: 8,
+                fixSize: false,
+                onResize: function () {
+                    wall.fitWidth()
+                },
+            })
+
+            let adjustTimer
+            const switchToImage = ($image, isInstant) => {
+                if ($image.hasClass('loaded')) {
+                    return
+                }
+
+                const imgHeight = $image.height() + 'px'
+                const $bookEnvelop = $image.closest('.book-loading')
+
+                $bookEnvelop.css('height', imgHeight)
+
+                if (isInstant) {
+                    $bookEnvelop.find('.z-book-none-cover').css('opacity', 0)
+                } else {
+                    $bookEnvelop.find('.z-book-none-cover')[0].style.animation = '.5s forwards toggleOpacity'
+                }
+                $bookEnvelop.find('.z-book-cover')[0].style.animation = '.5s reverse forwards toggleOpacity'
+
+                $image.addClass('loaded')
+
+                clearTimeout(adjustTimer)
+                adjustTimer = setTimeout(() => wall.fitWidth(), 400)
+            }
+
+            // Should be run async, otherwise this code will delay the execution of the js code with a large number of images
+            wall.container.find('img').on('load', function () {
+                switchToImage($(this), false)
+            })
+
+            $('.brick img').each(function() {
+                if (this.complete && this.naturalHeight !== 0) {
+                    switchToImage($(this), true)
+                }
+            })
+
+            // make books spines
+            $('#booksMosaicBoxContainer .z-book-cover').each(function () {
+                makeBookCover($(this))
+            })
+
+            $('#booksMosaicBoxContainer .z-book-none-cover').each(function () {
+                makeBookWithoutCover($(this))
+            })
+
+            setTimeout(() => wall.fitWidth(), 300)
+        });
+</script>
+<script src="/js/book_page.min.js"></script>
+<script>
+$('.btn-save-favorite').on('click', function(e){
+    e.preventDefault();
+    window.location = '/login';
+});    
+</script>
+<script>
+var selected_year_from = []  
+var selected_year_to = []
+var selected_langs = []
+var selected_extensions = []
+</script>
+<script src="/js/script.min.js"></script>
+
+
+
+<script type="text/javascript">
+  window.onload = function () {
+    (function(s, u, z, p) {
+      s.src = u;
+      s.setAttribute('data-zone', z);
+      p.appendChild(s);
+    })(document.createElement('script'), 'https://paupsoborofoow.net/tag.min.js', 8843953, document.body || document.documentElement);
+  };
+</script>
+
+   
+    </body>
+</html>

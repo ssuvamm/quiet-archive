@@ -1,0 +1,20 @@
+# Gradle / Android
+.gradle/
+.kotlin/
+build/
+app/build/
+local.properties
+*.apk
+*.aab
+
+# Generated native libraries (built from rust/ by the Gradle buildRust task)
+app/src/main/jniLibs/
+
+# Rust
+rust/target/
+
+# IDE / OS
+.idea/
+*.iml
+.DS_Store
+Thumbs.db

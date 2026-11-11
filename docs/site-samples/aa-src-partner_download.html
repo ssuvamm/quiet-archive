@@ -1,0 +1,127 @@
+{% extends "layouts/index.html" %}
+{% import 'macros/shared_links.j2' as a %}
+
+{% block title %}{{ gettext('page.partner_download.header') }}{% endblock %}
+
+{% block meta_tags %}
+  <meta property="robots" content="noindex" />
+{% endblock %}
+
+{% block body %}
+  <h2 class="mt-4 mb-4 text-3xl font-bold">{{ gettext('page.partner_download.header') }}</h2>
+
+  {% if only_official %}
+    <p class="mb-4 font-bold underline">
+      {{ gettext('page.partner_download.slow_downloads_official', websites='annas-archive.li, or .org') }}
+    </p>
+  {% endif %}
+
+  {% if no_cloudflare %}
+    <p class="mb-4 font-bold underline">
+      {{ gettext('page.partner_download.slow_downloads_cloudflare') }}
+    </p>
+  {% endif %}
+
+  <p class="mb-4 hidden">
+    {{ gettext('page.partner_download.main_page', a_main=((' href="/md5/' + canonical_md5 + '"') | safe)) }}
+  </p>
+
+  {% if aarecords %}
+    <div>
+      {% from 'macros/aarecord_list.html' import aarecord_list %}
+      {{ aarecord_list(aarecords) }}
+    </div>
+
+    {% if slow_server_index %}
+      <p class="mb-4 text-sm italic">
+        {{gettext('common.md5.servers.slow_partner', number=slow_server_index)}}
+      </p>
+    {% else %}
+      <p class="mb-2"></p>
+    {% endif %}
+  {% endif %}
+
+  {% if wait_seconds %}
+    <div class="mb-4 font-bold text-xl">
+      {{ gettext('page.partner_download.wait_banner', span_countdown=(' class="js-partner-countdown"' | safe), wait_seconds=wait_seconds) }}
+    </div>
+  {% endif %}
+
+  {% if url %}
+    <p class="mb-4 text-xl font-bold">
+      {{ gettext('page.partner_download.url', a_download=((' href="' + url + '"') | safe)) }}
+    </p>
+
+    <p class="mb-4 text-xs">
+      {% from 'macros/copy_button.html' import copy_button %}
+      {{ url }} {{ copy_button(url) }}
+    </p>
+  {% endif %}
+
+  {% if not fast_partner %}
+    <p>
+      {{ gettext('page.partner_download.li4') }}
+    </p>
+
+    <p>
+      {{ gettext('page.partner_download.faster_downloads', a_membership=(' href="/donate"' | safe)) }}
+    </p>
+
+    <p class="mb-4">
+      {{ gettext('page.partner_download.bulk_mirroring', a_datasets=(' href="/datasets"' | safe), a_torrents=(' href="/torrents"' | safe)) }}
+    </p>
+  {% endif %}
+
+  {% if wait_seconds %}
+    <div class="bg-[#f2f2f2] p-4 pb-3 rounded-lg mb-4">
+      <ul class="pl-4">
+          <li class="list-disc">{{ gettext('page.partner_download.wait') }}</li>
+          <li class="list-disc">{{ gettext('page.partner_download.li1') }}</li>
+          <li class="list-disc">{{ gettext('page.partner_download.li2') }}</li>
+          <li class="list-disc">{{ gettext('page.partner_download.li3') }}</li>
+          <li class="list-disc">
+            {{ gettext('page.md5.box.download.dl_managers') }}<br>
+            {{ gettext(
+                'page.md5.box.download.dl_managers.links',
+                links=(format_list([
+                  (a.html_a('JDownloader', href="https://jdownloader.org/", **a.external_link) | safe),
+                ], style='standard') | safe),
+            ) }}
+          </li>
+      </ul>
+    </div>
+
+    <script>
+      (function() {
+        let partnerCountdown = undefined;
+        let countdownStart = Date.now();
+        let waitSeconds = {{ wait_seconds | tojson }};
+
+        function countDown()
+        {
+          let secondsDelta = (Date.now() - countdownStart) / 1000;
+          let remaining = Math.floor(waitSeconds - secondsDelta);
+
+          document.querySelector('.js-partner-countdown').innerText = remaining;
+
+          if (remaining <= 0) {
+            clearInterval(partnerCountdown);
+            window.location.assign(window.location.href);
+          }
+        }
+
+        partnerCountdown = setInterval(countDown, 200);
+      })();
+    </script>
+  {% endif %}
+
+  {% if warning %}
+    <p class="mb-4 font-bold">
+      ⛔️ {{ gettext('page.partner_download.warning_many_downloads') }}
+      <!-- {% if daily_download_count_from_ip %} {{ gettext('page.partner_download.downloads_last_24_hours', count=daily_download_count_from_ip) }}{% endif %} -->
+      {{ gettext('page.partner_download.warning_many_downloads2') }}
+    </p>
+  {% endif %}
+
+  <!-- daily_download_count_from_ip: {{ daily_download_count_from_ip }} -->
+{% endblock %}
