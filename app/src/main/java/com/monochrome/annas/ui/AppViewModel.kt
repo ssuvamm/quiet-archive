@@ -27,6 +27,10 @@ private const val TAG = "AnnasVM"
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val context = app.applicationContext
 
+    /** Site is demanding a manual human check — surfaced in-app to solve. */
+    var verificationRequired by mutableStateOf(false)
+        private set
+
     init {
         // Solve any site bot-check once in the background and hand the
         // session cookies to the native core, so plain HTTP (downloads,
@@ -34,6 +38,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             kotlinx.coroutines.delay(2500)
             WebFetch.warmup(context.getBaseUrl())
+        }
+        // The search fetcher surfaces its WebView when the site demands a
+        // manual human check; mirror that state for the UI banner. (This
+        // property is declared before init on purpose: viewModelScope is
+        // Main.immediate, so the collector's first assignment runs inline,
+        // during this initializer.)
+        viewModelScope.launch {
+            WebFetch.verification.collect { verificationRequired = it }
         }
     }
 
@@ -110,19 +122,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         searchError = null
         viewModelScope.launch {
             try {
-                kotlinx.coroutines.withTimeout(110_000L) {
+                // Generous budget: if the site escalates to its manual check,
+                // the user solves it in-app (surfaced WebView) and that needs
+                // minutes, not seconds.
+                kotlinx.coroutines.withTimeout(600_000L) {
                 var obj: org.json.JSONObject? = null
-                // Fast path: native HTTP client.
+                var fastError: String? = null
+                // Fast path: native HTTP client. The site fingerprint-checks
+                // plain HTTP clients, so anything short of real results has to
+                // fall through to the browser session below — including an
+                // "ok" page with no cards, which is what an interstitial
+                // parses to.
                 try {
                     val raw = Repo.search(searchQuery, searchPage, searchExt, searchLang, searchSort)
                     val o = org.json.JSONObject(raw)
-                    if (o.optBoolean("ok", false)) obj = o else if (!isDdg(o.optString("error"))) {
-                        searchError = friendlyError(o.optString("error"))
-                    }
+                    if (o.optBoolean("ok", false)) obj = o else fastError = o.optString("error")
                     android.util.Log.d(TAG, "search: fast p=$searchPage ok=${o.optBoolean("ok")} err=${o.optString("error").take(80)}")
                 } catch (e: Exception) { android.util.Log.w(TAG, "search: fast path threw", e) }
-                // Slow path: WebView bridge (passes the site's browser check).
-                if (obj == null && searchError == null) {
+                var webError: String? = null
+                if (obj == null || (obj?.optJSONArray("results")?.length() ?: 0) == 0) {
+                    // Slow path: WebView bridge (passes the site's browser check).
                     try {
                         var html = WebFetch.fetch(searchUrl(searchPage))
                         var raw = Repo.parseSearchHtml(html, searchQuery, searchPage)
@@ -136,11 +155,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             raw = Repo.parseSearchHtml(html, searchQuery, searchPage)
                             o = org.json.JSONObject(raw)
                         }
-                        android.util.Log.d(TAG, "search: webview p=$searchPage ok=${o.optBoolean("ok")}")
-                        if (o.optBoolean("ok", false)) obj = o else searchError = friendlyError(o.optString("error"))
+                        android.util.Log.d(TAG, "search: webview p=$searchPage ok=${o.optBoolean("ok")} err=${o.optString("error").take(80)}")
+                        if (o.optBoolean("ok", false)) {
+                            // Never replace results with an empty page.
+                            if (obj == null || (o.optJSONArray("results")?.length() ?: 0) > 0) obj = o
+                        } else {
+                            webError = o.optString("error")
+                        }
                     } catch (e: Exception) {
                         android.util.Log.w(TAG, "search: webview path threw", e)
-                        searchError = friendlyError(e.message)
+                        webError = e.message
                     }
                 }
                 if (obj != null) {
@@ -150,8 +174,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     searchExhausted = results.isEmpty() && !searchHasMore
                     searchTook = obj.optLong("took_ms", 0)
                     android.util.Log.d(TAG, "search: done results=${results.size} hasMore=$searchHasMore")
-                } else if (searchError == null) {
-                    searchError = "Search failed"
+                } else {
+                    // Only now surface an error: the browser path had its turn.
+                    searchError = friendlyError(webError ?: fastError ?: "Search failed")
                 }
                 // An exhausted transient page shouldn't skip a whole page on retry.
                 if (!reset && searchError != null && searchPage > 1) searchPage--

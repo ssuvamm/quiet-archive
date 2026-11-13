@@ -204,13 +204,12 @@ fun ProgressLine(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun ErrorBanner(message: String, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+fun ErrorBanner(message: String, onRetry: (() -> Unit)?, modifier: Modifier = Modifier, label: String = "ERROR") {
     Column(modifier = modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(2.dp)).padding(14.dp)) {
-        Text("ERROR", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
-        Spacer(Modifier.height(8.dp))
-        GhostButton("Retry", onRetry)
+        onRetry?.let { Spacer(Modifier.height(8.dp)); GhostButton("Retry", it) }
     }
 }
 

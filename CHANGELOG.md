@@ -20,4 +20,19 @@ All notable changes to Quiet Archive are documented here. The format follows
   that shares its session cookies with the native core.
 - Monochrome light and dark themes, no colour, no gradients.
 
+## [1.1.0] - 2026-11-13
+
+### Added
+- In-app human verification for Anna's Archive's browser check: when the site's
+  DDoS-Guard escalates to a manual captcha, the session web view is surfaced
+  full-screen so the check can be completed in the app, then hidden again the
+  moment clearance is detected. Cookies persist for the rest of the session, so
+  the check is at most once per launch.
+
+### Fixed
+- Search no longer hangs indefinitely behind the site's browser check; the
+  surfaced check has its own 5-minute window and the search as a whole a
+  10-minute budget, both reported through the existing error banner with retry.
+
+[1.1.0]: https://github.com/ssuvamm/quiet-archive/releases/tag/v1.1.0
 [1.0.0]: https://github.com/ssuvamm/quiet-archive/releases/tag/v1.0.0

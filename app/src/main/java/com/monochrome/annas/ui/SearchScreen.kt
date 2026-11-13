@@ -55,6 +55,13 @@ fun SearchScreen(vm: AppViewModel, onOpenBook: (String, SearchResult?) -> Unit) 
             ProgressLine()
         }
         vm.searchError?.let { ErrorBanner(it, onRetry = { vm.search() }) }
+        if (vm.verificationRequired) {
+            ErrorBanner(
+                "Site verification required — complete the check on screen.",
+                onRetry = null,
+                label = "SITE CHECK",
+            )
+        }
         if (vm.searchResults.isEmpty() && !vm.searchLoading) {
             EmptyState("Search the archive", "Type a title, an author, or an ISBN to begin.")
         } else {
