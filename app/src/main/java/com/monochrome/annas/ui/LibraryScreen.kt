@@ -25,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,14 +53,20 @@ fun LibraryScreen(vm: AppViewModel, onOpen: (LibraryItem) -> Unit, onOpenBook: (
     var toDelete by remember { mutableStateOf<LibraryItem?>(null) }
     var toUnsave by remember { mutableStateOf<SavedBook?>(null) }
 
-    val savedIds = context.getSavedBooks()
+    // Reactive: the bookmark set changes on the book page, and the library
+    // changes when a download finishes.
+    val savedIds = vm.savedIds
+    val items by vm.library.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        vm.refreshLibrary()
+        vm.refreshSaved(force = true)
+    }
     androidx.compose.runtime.LaunchedEffect(tab) { if (tab == 1) vm.refreshSaved() }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(18.dp))
         MonoLabel("YOUR LIBRARY")
         Text("Library", style = MaterialTheme.typography.displayMedium)
-        val items = vm.library.value
         Text("${items.size} books · ${formatBytes(items.sumOf { it.size })}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth()) {
@@ -100,13 +107,24 @@ fun LibraryScreen(vm: AppViewModel, onOpen: (LibraryItem) -> Unit, onOpenBook: (
         } else {
             items.filter { it.id in savedIds }
         }
-        if (tab == 0 && filtered.isEmpty()) {
-            EmptyState("Nothing downloaded yet", "Find a book and tap Download or Save.")
+        val loadingSaved = vm.savedLoading && filtered.isEmpty() && vm.savedBooks.isEmpty()
+        val loadingDownloaded = vm.libraryLoading && items.isEmpty()
+        if (tab == 0 && loadingDownloaded) {
+            LoadingRows("Opening your library…")
+        } else if (tab == 1 && loadingSaved) {
+            LoadingRows("Loading saved books…")
+        } else if (tab == 0 && filtered.isEmpty()) {
+            EmptyState(
+                "Nothing downloaded yet",
+                "Find a book and tap Download. Finished files also appear in your phone's Downloads folder.",
+            )
         } else if (tab == 1) {
             val dlSaved = filtered
             val savedOnly = vm.savedBooks.filter { s ->
                 s.id !in dlSaved.map { it.id } &&
-                    (query.isBlank() || s.title.lowercase().contains(query.lowercase()))
+                    (query.isBlank() ||
+                        s.title.lowercase().contains(query.lowercase()) ||
+                        s.authors.joinToString(" ").lowercase().contains(query.lowercase()))
             }
             if (dlSaved.isEmpty() && savedOnly.isEmpty()) {
                 EmptyState("Nothing saved yet", "Tap SAVE on a book page to keep it here.")
@@ -152,6 +170,29 @@ fun LibraryScreen(vm: AppViewModel, onOpen: (LibraryItem) -> Unit, onOpenBook: (
             dismissButton = { TextButton(onClick = { toUnsave = null }) { Text("CANCEL", style = MaterialTheme.typography.labelLarge) } },
             containerColor = MaterialTheme.colorScheme.surface,
         )
+    }
+}
+
+@Composable
+private fun LoadingRows(message: String) {
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        ProgressLine()
+        Spacer(Modifier.height(10.dp))
+        MonoLabel(message)
+        repeat(3) {
+            Spacer(Modifier.height(18.dp))
+            Row(Modifier.fillMaxWidth()) {
+                Box(Modifier.size(48.dp, 72.dp).background(MaterialTheme.colorScheme.surfaceVariant))
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Hairline()
+                    Spacer(Modifier.height(12.dp))
+                    Hairline()
+                    Spacer(Modifier.height(12.dp))
+                    Hairline()
+                }
+            }
+        }
     }
 }
 

@@ -100,15 +100,25 @@ fun EmptyState(title: String, message: String, modifier: Modifier = Modifier, ac
 }
 
 @Composable
-fun GhostButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+fun GhostButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, selected: Boolean = false) {
+    val border = when {
+        !enabled -> MaterialTheme.colorScheme.outlineVariant
+        selected -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.outline
+    }
+    val label = when {
+        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant
+        selected -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.onSurface
+    }
     Box(
         modifier = modifier
-            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(2.dp))
+            .border(1.dp, border, RoundedCornerShape(2.dp))
             .clickable(enabled = enabled) { onClick() }
             .padding(horizontal = 16.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text.uppercase(), style = MaterialTheme.typography.labelLarge, color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(text.uppercase(), style = MaterialTheme.typography.labelLarge, color = label)
     }
 }
 

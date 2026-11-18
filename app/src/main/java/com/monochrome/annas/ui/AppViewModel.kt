@@ -71,6 +71,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val library = _library.asStateFlow()
     var libraryLoading by mutableStateOf(false)
 
+    /**
+     * Bookmarked ids as observable state. Reading SharedPreferences straight
+     * from a composable never triggers recomposition, which is why the SAVE
+     * button used to keep its old label; every screen now reads this instead.
+     */
+    var savedIds by mutableStateOf(context.getSavedBooks().toSet())
+        private set
+
     private fun searchUrl(page: Int): String {
         val base = context.getBaseUrl().trimEnd('/')
         val sb = StringBuilder(base).append("/search?q=")
@@ -275,22 +283,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun startDownload(book: Book, link: com.monochrome.annas.data.LinkRow?, replace: Boolean = false) {
-        val url = link?.url ?: book.downloads.firstOrNull()?.url ?: return
+        // Try the tap target first, then the other slow servers, then any
+        // direct link: a dead mirror no longer ends the download with a
+        // one-line error, it moves on to the next one automatically.
+        val candidates = buildList {
+            link?.url?.takeIf { it.startsWith("http") }?.let { add(it) }
+            book.downloads.filter { it.kind == "slow" }.forEach { if (it.url !in this) add(it.url) }
+            book.downloads.forEach { if (it.url !in this) add(it.url) }
+        }
+        val url = candidates.firstOrNull() ?: return
         // The book's own metadata carries the real format (e.g. "MOBI");
-        // slow links don't reveal an extension, so seed it from there.
+        // slow links don't reveal an extension, so prefer it over the label.
         val metaFormat = book.metadata.firstOrNull { it.label.equals("Format", true) }
             ?.value?.trim(' ', '.')?.lowercase().orEmpty()
+        val linkExt = link?.label?.substringAfterLast('.', "")?.lowercase()
+            ?.takeIf { it.length in 2..5 && it.all { c -> c.isLetterOrDigit() } }
+        val format = linkExt ?: metaFormat
         val req = com.monochrome.annas.data.DownloadRequest(
             id = book.id,
             title = book.title,
             authors = book.authors,
-            format = link?.kind?.let { if (it == "direct") book.downloads.firstOrNull()?.label?.substringAfterLast('.') ?: "" else metaFormat } ?: "",
+            format = format,
             url = url,
             cover = book.cover,
             bookUrl = book.sourceUrl,
             replace = replace,
         )
-        com.monochrome.annas.data.Downloads.start(context, req)
+        com.monochrome.annas.data.Downloads.start(context, req, candidates.drop(1))
     }
 
     var hasDownloadsFilter by mutableStateOf(false)
@@ -298,6 +317,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // Bookmarked books that are not downloaded, fetched lazily for the SAVED tab.
     var savedBooks by mutableStateOf<List<SavedBook>>(emptyList())
+    var savedLoading by mutableStateOf(false)
+        private set
     private var savedFetchedOnce = false
 
     /** Build the SAVED tab list: bookmarks the library cannot show. */
@@ -305,35 +326,51 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (savedFetchedOnce && !force) return
         savedFetchedOnce = true
         viewModelScope.launch {
+            savedLoading = true
             val downloadedIds = _library.value.map { it.id }.toSet()
             val ids = context.getSavedBooks().filter { it !in downloadedIds }
             // Keep what we already know while refreshing.
             val known = savedBooks.associateBy { it.id }.toMutableMap()
             savedBooks = ids.mapNotNull { known[it] }
-            withContext(Dispatchers.IO) {
-                ids.forEach { id ->
-                    if (known.containsKey(id)) return@forEach
-                    val url = "${context.getBaseUrl().trimEnd('/')}/md5/$id"
-                    try {
-                        val html = WebFetch.fetch(url)
-                        val book = parseBook(Repo.parseBookHtml(html, url))
-                        if (book != null) {
-                            val meta = listOfNotNull(
-                                book.metadata.firstOrNull { it.label.equals("Year", true) }?.value,
-                                book.metadata.firstOrNull { it.label.equals("Format", true) }?.value?.trim('.')?.uppercase(),
-                                book.metadata.firstOrNull { it.label.equals("Language", true) }?.value?.uppercase(),
-                                book.metadata.firstOrNull { it.label.equals("Size", true) }?.value?.uppercase(),
-                            ).joinToString(" · ")
-                            known[id] = SavedBook(id, book.title, book.authors, book.cover, url, meta)
+            try {
+                withContext(Dispatchers.IO) {
+                    ids.forEach { id ->
+                        if (known.containsKey(id)) return@forEach
+                        val url = "${context.getBaseUrl().trimEnd('/')}/md5/$id"
+                        var book: Book? = null
+                        // Fast path: the native HTTP client resolves most
+                        // records in milliseconds, so bookmarks show up
+                        // immediately instead of waiting on the WebView.
+                        try {
+                            val o = org.json.JSONObject(Repo.book(url))
+                            if (o.optBoolean("ok", false)) book = parseBook(o.toString())
+                        } catch (_: Exception) {}
+                        if (book == null) {
+                            try {
+                                val html = WebFetch.fetch(url)
+                                book = parseBook(Repo.parseBookHtml(html, url))
+                            } catch (_: Exception) {}
                         }
-                    } catch (_: Exception) {
-                        known[id] = SavedBook(id, "Saved book", emptyList(), null, url, "")
+                        val resolved = book
+                        known[id] = if (resolved != null) {
+                            val meta = listOfNotNull(
+                                resolved.metadata.firstOrNull { it.label.equals("Year", true) }?.value,
+                                resolved.metadata.firstOrNull { it.label.equals("Format", true) }?.value?.trim('.')?.uppercase(),
+                                resolved.metadata.firstOrNull { it.label.equals("Language", true) }?.value?.uppercase(),
+                                resolved.metadata.firstOrNull { it.label.equals("Size", true) }?.value?.uppercase(),
+                            ).joinToString(" · ")
+                            SavedBook(id, resolved.title, resolved.authors, resolved.cover, url, meta)
+                        } else {
+                            SavedBook(id, "Saved book", emptyList(), null, url, "")
+                        }
+                        // Publish progressively so rows appear as they resolve.
+                        savedBooks = context.getSavedBooks()
+                            .filter { it !in downloadedIds }
+                            .mapNotNull { known[it] }
                     }
-                    // Publish progressively so rows appear as they resolve.
-                    savedBooks = context.getSavedBooks()
-                        .filter { it !in downloadedIds }
-                        .mapNotNull { known[it] }
                 }
+            } finally {
+                savedLoading = false
             }
         }
     }
@@ -356,6 +393,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
-    fun saveBookmark(id: String): Boolean = context.toggleSaved(id)
-    fun isBookmarked(id: String): Boolean = context.isSaved(id)
+    fun saveBookmark(id: String): Boolean {
+        val now = context.toggleSaved(id)
+        savedIds = context.getSavedBooks().toSet()
+        if (now) {
+            // Newly bookmarked: let the SAVED tab resolve it in the background.
+            refreshSaved(force = true)
+        } else {
+            pruneSaved()
+        }
+        return now
+    }
+    fun isBookmarked(id: String): Boolean = id in savedIds
 }

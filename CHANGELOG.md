@@ -4,6 +4,34 @@ All notable changes to Quiet Archive are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [semantic versioning](https://semver.org/).
 
+## [1.2.0] - 2026-11-18
+
+### Added
+- Built-in reader for EPUB (table of contents, chapter navigation, images),
+  TXT/Markdown, FB2, HTML and PDF books, with three page themes, adjustable
+  text size and reading position that survives closing the app.
+- Listen to a book through the phone's text-to-speech engine, or export the
+  whole book to a WAV audiobook in Downloads (the local, on-device idea behind
+  OpenAudioBookify) — no account or cloud service involved.
+- Audio player for downloaded audiobooks: resume point, 15-second skips,
+  playback speed from 0.8x to 2x, and a sleep timer.
+- Downloads can be cancelled at any time, with a CANCEL action both on the
+  book page and in the download banner.
+- Failed downloads now try the book page's other servers automatically before
+  giving up; RETRY in the error banner starts the whole chain again.
+
+### Fixed
+- The SAVE button and the library now follow bookmark state immediately —
+  the book page no longer claims SAVED when a book is not saved, and SAVE /
+  SAVED update on the first tap.
+- OPEN / DOWNLOAD buttons react to the live library and download state instead
+  of freezing at whatever they showed when the page opened.
+- The library and saved lists show loading placeholders instead of looking
+  empty on launch; saved bookmarks resolve through the fast HTTP path first.
+- Pressing BACK from a reader, book page or list now returns to the previous
+  screen; at the top level it sends the app to the background instead of
+  quitting and relaunching it.
+
 ## [1.0.0] - 2026-11-11
 
 ### Added

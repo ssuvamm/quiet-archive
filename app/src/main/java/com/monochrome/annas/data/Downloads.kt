@@ -30,8 +30,20 @@ object Downloads {
     /** Ids already given one session-refresh retry after a protection block. */
     private val refreshed = mutableSetOf<String>()
 
+    /** A retry is in flight for these ids (keeps the poller from looping). */
+    private val retrying = mutableSetOf<String>()
+
+    /** Ids that used up every link from the book page. */
+    private val exhausted = mutableSetOf<String>()
+
+    /** Ids the user cancelled — never auto-retried. */
+    private val cancelled = mutableSetOf<String>()
+
     /** Stored request JSON per id, so a blocked download can be re-issued. */
     private val requests = mutableMapOf<String, String>()
+
+    /** Untried mirror links for each id, in order of preference. */
+    private val fallbacks = mutableMapOf<String, ArrayDeque<String>>()
 
     /** Errors that mean the site's bot protection stopped the plain HTTP client. */
     private fun isBlocked(error: String?): Boolean =
@@ -49,16 +61,15 @@ object Downloads {
                     handled.add(task.id)
                     scope.launch { save(context.applicationContext, task) }
                 }
-                // A download the guard blocked (HTTP 403 to the plain HTTP
-                // client) can usually pass once the browser session's cookies
-                // are re-synced: walk its book page through the WebView
-                // session — which surfaces the manual check to the user when
-                // the guard escalates — and re-issue the download once.
-                current.filter { it.state == "error" && it.id !in refreshed && isBlocked(it.error) }
-                    .forEach { task ->
-                        refreshed.add(task.id)
-                        scope.launch { refreshAndRetry(context.applicationContext, task.id) }
-                    }
+                // Recover a failed download: re-sync the browser session once
+                // for a protection block, then walk the book page's other
+                // servers. Gives up (and keeps the error visible) when there
+                // is nothing left to try, or when the user cancelled.
+                current.filter {
+                    it.state == "error" && it.id !in exhausted && it.id !in cancelled && it.id !in retrying
+                }.forEach { task ->
+                    scope.launch { retryFailed(context.applicationContext, task) }
+                }
                 val hasActive = current.any { it.state in setOf("queued", "downloading", "waiting", "saving") }
                 delay(if (hasActive) 400L else 2000L)
                 if (!hasActive && current.isEmpty()) break
@@ -68,28 +79,79 @@ object Downloads {
     }
 
     /**
-     * Re-establish the browser session for a blocked download. Fetching the
-     * book page through WebFetch both rides out the guard's automatic check
-     * and surfaces its manual check to the user if it escalates; the cookies
-     * are synced into the native core either way. Then re-issue the stored
-     * request — the errored task is replaced, so the user sees the download
-     * restart (or, if the site still refuses, the same error banner again).
+     * One recovery step for a failed download.
+     *
+     * A DDoS-Guard block usually clears once the WebView session's cookies are
+     * re-synced (the fetch also surfaces the manual check to the user). After
+     * that — and for ordinary failures like a dead mirror — try the next
+     * download link listed on the book page.
      */
-    private suspend fun refreshAndRetry(context: Context, id: String) {
+    private suspend fun retryFailed(context: Context, task: DownloadProgress) {
+        if (!retrying.add(task.id)) return
+        try {
+            val json = requests[task.id] ?: return
+            if (isBlocked(task.error) && refreshed.add(task.id)) {
+                android.util.Log.d("Downloads", "blocked download — refreshing session")
+                refreshSession(task.id)
+                reissue(task.id, json)
+                return
+            }
+            val next = fallbacks[task.id]?.removeFirstOrNull()
+            if (next != null) {
+                android.util.Log.d("Downloads", "retrying ${task.id} with another server")
+                val updated = JSONObject(json).put("url", next).toString()
+                requests[task.id] = updated
+                reissue(task.id, updated)
+                return
+            }
+            android.util.Log.d("Downloads", "no recovery left for ${task.id}: ${task.error}")
+            exhausted.add(task.id)
+        } finally {
+            retrying.remove(task.id)
+        }
+    }
+
+    private suspend fun refreshSession(id: String) {
         val json = requests[id] ?: return
         val bookUrl = try { JSONObject(json).optString("book_url") } catch (_: Exception) { "" }
-        android.util.Log.d("Downloads", "blocked download — refreshing session via $bookUrl")
         try {
             WebFetch.fetch(bookUrl.ifBlank { "https://annas-archive.gl" })
         } catch (e: Exception) {
             android.util.Log.w("Downloads", "session refresh for download failed", e)
         }
+    }
+
+    private fun reissue(id: String, json: String) {
         try {
             val ok = JSONObject(Native.startDownload(json)).optBoolean("ok", false)
-            android.util.Log.d("Downloads", "retry after session refresh: ok=$ok")
+            android.util.Log.d("Downloads", "retry of $id: ok=$ok")
         } catch (e: Exception) {
-            android.util.Log.w("Downloads", "retry after session refresh threw", e)
+            android.util.Log.w("Downloads", "retry of $id threw", e)
         }
+    }
+
+    /** Stop a download and forget its retry bookkeeping. */
+    fun cancel(context: Context, id: String) {
+        cancelled.add(id)
+        exhausted.add(id)
+        retrying.remove(id)
+        requests.remove(id)
+        fallbacks.remove(id)
+        refreshed.remove(id)
+        scope.launch {
+            try { Native.cancelDownload(id) } catch (_: Exception) {}
+        }
+    }
+
+    /** Re-issue the stored request after the user taps RETRY. */
+    fun retry(context: Context, id: String) {
+        val json = requests[id] ?: return
+        exhausted.remove(id)
+        cancelled.remove(id)
+        refreshed.remove(id)
+        retrying.remove(id)
+        ensurePoller(context)
+        reissue(id, json)
     }
 
     private suspend fun save(context: Context, task: DownloadProgress) {
@@ -156,7 +218,11 @@ object Downloads {
         }
     }
 
-    fun start(context: Context, request: DownloadRequest): String? {
+    fun start(
+        context: Context,
+        request: DownloadRequest,
+        mirrors: List<String> = emptyList(),
+    ): String? {
         val json = JSONObject()
         json.put("id", request.id)
         json.put("title", request.title)
@@ -168,7 +234,13 @@ object Downloads {
         json.put("replace", request.replace)
         ensurePoller(context)
         requests[request.id] = json.toString()
-        refreshed.remove(request.id) // a new manual attempt gets a fresh retry
+        // A fresh manual attempt resets every retry counter: session refresh,
+        // mirror list, cancellation and the "gave up" flag.
+        refreshed.remove(request.id)
+        retrying.remove(request.id)
+        exhausted.remove(request.id)
+        cancelled.remove(request.id)
+        fallbacks[request.id] = ArrayDeque(mirrors.filter { it != request.url })
         val result = Native.startDownload(json.toString())
         return try {
             val o = JSONObject(result)

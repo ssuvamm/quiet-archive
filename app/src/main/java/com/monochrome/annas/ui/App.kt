@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -44,6 +45,8 @@ sealed class Screen {
     data class Book(val url: String, val preview: SearchResult?) : Screen()
     data object Library : Screen()
     data object Settings : Screen()
+    data class Reader(val item: LibraryItem) : Screen()
+    data class Audio(val item: LibraryItem) : Screen()
 }
 
 @Composable
@@ -90,10 +93,36 @@ private fun Splash() {
 fun MainApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val vm: AppViewModel = viewModel()
-    var screen by remember { mutableStateOf<Screen>(Screen.Search) }
-    BackHandler(enabled = screen is Screen.Book) { screen = Screen.Search }
+    // Real back stack: every push remembers where it came from, so BACK never
+    // skips screens. At the root it sends the app to the background instead of
+    // finishing it, which is what the user expects from a reading app.
+    val stack = remember { androidx.compose.runtime.mutableStateListOf<Screen>(Screen.Search) }
+    val screen = stack.last()
     val downloads by Downloads.tasks.collectAsState()
     val savedEvents = Downloads.saved
+
+    fun back() {
+        if (stack.size > 1) {
+            stack.removeAt(stack.lastIndex)
+        } else {
+            val activity = context as? android.app.Activity
+            if (activity != null) activity.moveTaskToBack(true) else stack.clear()
+        }
+    }
+
+    fun navigate(next: Screen) {
+        if (stack.lastOrNull() != next) stack.add(next)
+    }
+
+    fun openItem(item: LibraryItem) {
+        when {
+            Reader.isAudio(item) -> navigate(Screen.Audio(item))
+            Reader.isReadable(item) -> navigate(Screen.Reader(item))
+            else -> com.monochrome.annas.util.openItem(context, item)
+        }
+    }
+
+    BackHandler { back() }
 
     LaunchedEffect(Unit) {
         vm.refreshLibrary()
@@ -101,10 +130,17 @@ fun MainApp() {
         savedEvents.collectLatest { vm.refreshLibrary() }
     }
 
+    val immersive = screen is Screen.Reader || screen is Screen.Audio
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            BottomBar(current = screen, onSelect = { screen = it })
+            if (!immersive) {
+                BottomBar(current = screen, onSelect = { target ->
+                    stack.clear()
+                    stack.add(target)
+                })
+            }
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
@@ -112,32 +148,45 @@ fun MainApp() {
                 when (s) {
                     is Screen.Search -> SearchScreen(
                         vm = vm,
-                        onOpenBook = { url, preview -> screen = Screen.Book(url, preview) },
+                        onOpenBook = { url, preview -> navigate(Screen.Book(url, preview)) },
                     )
                     is Screen.Book -> BookScreen(
                         url = s.url,
                         preview = s.preview,
                         vm = vm,
-                        onBack = { screen = Screen.Search },
-                        onOpenDownloaded = { item ->
-                            com.monochrome.annas.util.openItem(context, item)
-                        },
+                        onBack = { back() },
+                        onOpenDownloaded = { item -> openItem(item) },
                     )
                     is Screen.Library -> LibraryScreen(
                         vm = vm,
-                        onOpen = { item -> com.monochrome.annas.util.openItem(context, item) },
-                        onOpenBook = { url -> screen = Screen.Book(url, null) },
+                        onOpen = { item -> openItem(item) },
+                        onOpenBook = { url -> navigate(Screen.Book(url, null)) },
                     )
                     is Screen.Settings -> SettingsScreen(vm = vm)
+                    is Screen.Reader -> ReaderScreen(item = s.item, onBack = { back() })
+                    is Screen.Audio -> AudioScreen(item = s.item, onBack = { back() })
                 }
             }
-            val active = downloads.firstOrNull { it.state in setOf("queued", "downloading", "waiting", "saving") }
-            val failed = downloads.filter { it.state == "error" && !it.error.isNullOrBlank() }.maxByOrNull { it.createdAt }
-            var dismissedError by remember { mutableStateOf<String?>(null) }
-            when {
-                active != null -> DownloadBanner(active, modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter))
-                failed != null && dismissedError != failed.id ->
-                    DownloadErrorBanner(failed, onDismiss = { dismissedError = failed.id }, modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter))
+            if (!immersive) {
+                val active = downloads.firstOrNull { it.state in setOf("queued", "downloading", "waiting", "saving") }
+                val failed = downloads
+                    .filter { it.state == "error" && !it.error.isNullOrBlank() }
+                    .maxByOrNull { it.createdAt }
+                var dismissedError by remember { mutableStateOf<String?>(null) }
+                when {
+                    active != null -> DownloadBanner(
+                        active,
+                        onCancel = { Downloads.cancel(context, active.id) },
+                        modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter),
+                    )
+                    failed != null && dismissedError != failed.id ->
+                        DownloadErrorBanner(
+                            failed,
+                            onRetry = { Downloads.retry(context, failed.id) },
+                            onDismiss = { dismissedError = failed.id },
+                            modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter),
+                        )
+                }
             }
         }
     }
@@ -166,9 +215,9 @@ fun BottomItem(icon: androidx.compose.ui.graphics.vector.ImageVector, label: Str
 }
 
 @Composable
-fun DownloadBanner(task: com.monochrome.annas.data.DownloadProgress, modifier: Modifier = Modifier) {
+fun DownloadBanner(task: com.monochrome.annas.data.DownloadProgress, onCancel: () -> Unit, modifier: Modifier = Modifier) {
     Row(
-        modifier = modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(12.dp),
+        modifier = modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -176,17 +225,30 @@ fun DownloadBanner(task: com.monochrome.annas.data.DownloadProgress, modifier: M
             Spacer(Modifier.height(4.dp))
             ProgressLine()
             Spacer(Modifier.height(2.dp))
-            if (task.state == "waiting") {
-                MonoLabel(task.error ?: "Waiting…")
-            } else {
-                MonoLabel("${(if (task.total > 0) task.received * 100 / task.total else 0)}%  ${formatSpeed(task.speed)}")
-            }
+            MonoLabel(downloadStateLabel(task))
         }
+        Spacer(Modifier.width(8.dp))
+        GhostButton("CANCEL", onCancel)
+    }
+}
+
+private fun downloadStateLabel(task: com.monochrome.annas.data.DownloadProgress): String = when (task.state) {
+    "queued" -> "STARTING…"
+    "waiting" -> task.error ?: "WAITING FOR THE SITE…"
+    "saving" -> "SAVING TO YOUR PHONE…"
+    else -> {
+        val percent = if (task.total > 0) task.received * 100 / task.total else 0
+        "${percent}%  ${formatSpeed(task.speed)}".trim()
     }
 }
 
 @Composable
-fun DownloadErrorBanner(task: com.monochrome.annas.data.DownloadProgress, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+fun DownloadErrorBanner(
+    task: com.monochrome.annas.data.DownloadProgress,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Row(
         modifier = modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -196,6 +258,9 @@ fun DownloadErrorBanner(task: com.monochrome.annas.data.DownloadProgress, onDism
             Spacer(Modifier.height(2.dp))
             Text(task.error ?: "Download failed", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
-        GhostButton("DISMISS", onDismiss, modifier = Modifier)
+        Spacer(Modifier.width(6.dp))
+        GhostButton("RETRY", onRetry)
+        Spacer(Modifier.width(6.dp))
+        GhostButton("DISMISS", onDismiss)
     }
 }

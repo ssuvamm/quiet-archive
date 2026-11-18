@@ -22,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,7 +43,12 @@ fun BookScreen(url: String, preview: SearchResult?, vm: AppViewModel, onBack: ()
     val context = LocalContext.current
     LaunchedEffect(url) { vm.openBook(url, null) }
     val book = vm.book
-    val inLibrary = vm.library.value.firstOrNull { it.id == book?.id }
+    // Library and download state must be observed, not read once: otherwise
+    // the OPEN/DOWNLOAD buttons keep the values they had on first composition.
+    val library by vm.library.collectAsState()
+    val downloads by com.monochrome.annas.data.Downloads.tasks.collectAsState()
+    val inLibrary = library.firstOrNull { it.id == book?.id }
+    val task = book?.let { b -> downloads.firstOrNull { it.id == b.id } }
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -52,19 +58,37 @@ fun BookScreen(url: String, preview: SearchResult?, vm: AppViewModel, onBack: ()
             Spacer(Modifier.weight(1f))
             IconButton(onClick = { openInBrowser(context, url) }) { Icon(MonoIcons.Open, contentDescription = "Open on site", tint = MaterialTheme.colorScheme.onSurface) }
         }
-        if (vm.bookLoading) {
+        if (vm.bookLoading && book == null) {
             Column(Modifier.fillMaxSize().padding(24.dp)) { ProgressLine(); Spacer(Modifier.height(12.dp)); Text("Loading…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        } else if (vm.bookError != null) {
+        } else if (vm.bookError != null && book == null) {
             Column(Modifier.fillMaxSize().padding(24.dp)) { ErrorBanner(vm.bookError!!, onRetry = { vm.openBook(url, null) }) }
         } else if (book != null) {
-            BookContent(book, vm, context, inLibrary, onOpenDownloaded)
+            BookContent(book, vm, context, inLibrary, task, onOpenDownloaded)
         }
     }
 }
 
 @Composable
-private fun BookContent(book: Book, vm: AppViewModel, context: Context, inLibrary: com.monochrome.annas.data.LibraryItem?, onOpenDownloaded: (com.monochrome.annas.data.LibraryItem) -> Unit) {
+private fun BookContent(
+    book: Book,
+    vm: AppViewModel,
+    context: Context,
+    inLibrary: com.monochrome.annas.data.LibraryItem?,
+    task: com.monochrome.annas.data.DownloadProgress?,
+    onOpenDownloaded: (com.monochrome.annas.data.LibraryItem) -> Unit,
+) {
     var expanded by remember { mutableStateOf(false) }
+    val active = task != null && task.state in setOf("queued", "downloading", "waiting", "saving")
+    val failed = task?.state == "error" && !task.error.isNullOrBlank()
+    val percent = if (task != null && task.total > 0) (task.received * 100 / task.total).toInt() else 0
+    val saved = book.id in vm.savedIds
+    val primaryLabel = when {
+        inLibrary != null -> "OPEN"
+        active -> if (task?.state == "saving") "SAVING…" else if (task?.state == "waiting") "WAITING…" else "DOWNLOADING $percent%"
+        failed -> "RETRY DOWNLOAD"
+        else -> "DOWNLOAD"
+    }
+
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.Top) {
@@ -85,13 +109,38 @@ private fun BookContent(book: Book, vm: AppViewModel, context: Context, inLibrar
         Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             // Slow servers work for guests; fast ones need a member account.
-            PrimaryButton(if (inLibrary != null) "OPEN" else "DOWNLOAD", {
-                if (inLibrary != null) onOpenDownloaded(inLibrary) else vm.startDownload(
-                    book,
-                    book.downloads.firstOrNull { it.kind == "slow" } ?: book.downloads.firstOrNull()
-                )
-            }, modifier = Modifier.weight(1f), icon = if (inLibrary != null) MonoIcons.Open else MonoIcons.Download)
-            GhostButton(if (vm.isBookmarked(book.id)) "SAVED" else "SAVE", { vm.saveBookmark(book.id) }, modifier = Modifier)
+            PrimaryButton(primaryLabel, {
+                if (inLibrary != null) {
+                    onOpenDownloaded(inLibrary)
+                } else {
+                    vm.startDownload(book, book.downloads.firstOrNull { it.kind == "slow" } ?: book.downloads.firstOrNull())
+                }
+            }, modifier = Modifier.weight(1f), enabled = !active, icon = if (inLibrary != null) MonoIcons.Open else MonoIcons.Download)
+            GhostButton(if (saved) "SAVED" else "SAVE", { vm.saveBookmark(book.id) }, modifier = Modifier, selected = saved)
+        }
+        if (active) {
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    ProgressLine()
+                    Spacer(Modifier.height(4.dp))
+                    MonoLabel(
+                        when {
+                            task?.state == "saving" -> "Saving to your phone…"
+                            task?.state == "waiting" -> task.error ?: "Waiting for the site…"
+                            else -> "$percent%  ${formatSpeed(task?.speed ?: 0)}"
+                        },
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                GhostButton("CANCEL", { com.monochrome.annas.data.Downloads.cancel(context, book.id) })
+            }
+        }
+        if (failed && !active) {
+            Spacer(Modifier.height(10.dp))
+            ErrorBanner(task?.error ?: "Download failed", onRetry = {
+                vm.startDownload(book, book.downloads.firstOrNull { it.kind == "slow" } ?: book.downloads.firstOrNull())
+            })
         }
         if (book.description != null) {
             SectionHeader("DESCRIPTION")
