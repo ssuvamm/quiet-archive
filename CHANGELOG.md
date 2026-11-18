@@ -34,5 +34,17 @@ All notable changes to Quiet Archive are documented here. The format follows
   surfaced check has its own 5-minute window and the search as a whole a
   10-minute budget, both reported through the existing error banner with retry.
 
+## [1.1.1] - 2026-11-18
+
+### Fixed
+- Downloads blocked by the site's bot protection (HTTP 403 to the native
+  client) now recover on their own: the app walks the book page through its
+  browser session — surfacing the manual check to the user if the site
+  escalates — re-syncs the session cookies and re-issues the download once.
+- Downloads no longer get stuck at "saving" when the same book is downloaded
+  twice in one app session (delete + re-download used to hang forever).
+- Downloads without a chosen folder now land in the phone's public Downloads
+  folder (visible in any file manager) instead of app-private storage.
+
 [1.1.0]: https://github.com/ssuvamm/quiet-archive/releases/tag/v1.1.0
 [1.0.0]: https://github.com/ssuvamm/quiet-archive/releases/tag/v1.0.0

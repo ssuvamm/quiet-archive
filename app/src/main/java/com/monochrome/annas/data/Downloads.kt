@@ -27,6 +27,18 @@ object Downloads {
     private var pollJob: Job? = null
     private val handled = mutableSetOf<String>()
 
+    /** Ids already given one session-refresh retry after a protection block. */
+    private val refreshed = mutableSetOf<String>()
+
+    /** Stored request JSON per id, so a blocked download can be re-issued. */
+    private val requests = mutableMapOf<String, String>()
+
+    /** Errors that mean the site's bot protection stopped the plain HTTP client. */
+    private fun isBlocked(error: String?): Boolean =
+        error != null && (error.contains("Blocked by the site protection", true) ||
+            error.contains("browser verification", true) ||
+            error.contains("HTTP 403", true))
+
     fun ensurePoller(context: Context) {
         if (pollJob?.isActive == true) return
         pollJob = scope.launch {
@@ -37,11 +49,46 @@ object Downloads {
                     handled.add(task.id)
                     scope.launch { save(context.applicationContext, task) }
                 }
+                // A download the guard blocked (HTTP 403 to the plain HTTP
+                // client) can usually pass once the browser session's cookies
+                // are re-synced: walk its book page through the WebView
+                // session — which surfaces the manual check to the user when
+                // the guard escalates — and re-issue the download once.
+                current.filter { it.state == "error" && it.id !in refreshed && isBlocked(it.error) }
+                    .forEach { task ->
+                        refreshed.add(task.id)
+                        scope.launch { refreshAndRetry(context.applicationContext, task.id) }
+                    }
                 val hasActive = current.any { it.state in setOf("queued", "downloading", "waiting", "saving") }
                 delay(if (hasActive) 400L else 2000L)
                 if (!hasActive && current.isEmpty()) break
             }
             pollJob = null
+        }
+    }
+
+    /**
+     * Re-establish the browser session for a blocked download. Fetching the
+     * book page through WebFetch both rides out the guard's automatic check
+     * and surfaces its manual check to the user if it escalates; the cookies
+     * are synced into the native core either way. Then re-issue the stored
+     * request — the errored task is replaced, so the user sees the download
+     * restart (or, if the site still refuses, the same error banner again).
+     */
+    private suspend fun refreshAndRetry(context: Context, id: String) {
+        val json = requests[id] ?: return
+        val bookUrl = try { JSONObject(json).optString("book_url") } catch (_: Exception) { "" }
+        android.util.Log.d("Downloads", "blocked download — refreshing session via $bookUrl")
+        try {
+            WebFetch.fetch(bookUrl.ifBlank { "https://annas-archive.gl" })
+        } catch (e: Exception) {
+            android.util.Log.w("Downloads", "session refresh for download failed", e)
+        }
+        try {
+            val ok = JSONObject(Native.startDownload(json)).optBoolean("ok", false)
+            android.util.Log.d("Downloads", "retry after session refresh: ok=$ok")
+        } catch (e: Exception) {
+            android.util.Log.w("Downloads", "retry after session refresh threw", e)
         }
     }
 
@@ -60,6 +107,34 @@ object Downloads {
                 } ?: throw IllegalStateException("Could not open destination stream")
                 val size = temp.length()
                 Repo.finishSave(task.id, docUri.toString(), "", name, size)
+            } else if (android.os.Build.VERSION.SDK_INT >= 29) {
+                // No folder picked: save where the user can actually see it —
+                // the public Downloads folder — instead of app-private
+                // storage that most file managers refuse to show.
+                val resolver = context.contentResolver
+                val mime = if (task.format.isBlank()) "application/octet-stream" else mimeFor(task.format)
+                val values = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.Downloads.DISPLAY_NAME, task.filename)
+                    put(android.provider.MediaStore.Downloads.MIME_TYPE, mime)
+                    put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
+                }
+                val itemUri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    ?: throw IllegalStateException("Could not create file in Downloads")
+                try {
+                    resolver.openOutputStream(itemUri)?.use { out ->
+                        temp.inputStream().use { it.copyTo(out) }
+                    } ?: throw IllegalStateException("Could not open destination stream")
+                } catch (e: Exception) {
+                    try { resolver.delete(itemUri, null, null) } catch (_: Exception) {}
+                    throw e
+                }
+                values.clear()
+                values.put(android.provider.MediaStore.Downloads.IS_PENDING, 0)
+                resolver.update(itemUri, values, null, null)
+                // The provider may have renamed the file on a collision.
+                val name = resolver.query(itemUri, arrayOf(android.provider.MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)
+                    ?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: task.filename
+                Repo.finishSave(task.id, itemUri.toString(), "", name, temp.length())
             } else {
                 val dir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
                 dir.mkdirs()
@@ -71,6 +146,13 @@ object Downloads {
             _saved.tryEmit(Unit)
         } catch (e: Exception) {
             Repo.failSave(task.id, e.message ?: "Could not save file")
+        } finally {
+            // Handled is only a de-duplication guard for THIS save: clearing
+            // it lets a later download of the same book (after a failed save,
+            // or a delete + re-download) reach the save step again instead of
+            // sticking in "saving" forever.
+            handled.remove(task.id)
+            requests.remove(task.id)
         }
     }
 
@@ -85,6 +167,8 @@ object Downloads {
         json.put("book_url", request.bookUrl)
         json.put("replace", request.replace)
         ensurePoller(context)
+        requests[request.id] = json.toString()
+        refreshed.remove(request.id) // a new manual attempt gets a fresh retry
         val result = Native.startDownload(json.toString())
         return try {
             val o = JSONObject(result)
