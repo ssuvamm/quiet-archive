@@ -61,6 +61,7 @@ object Downloads {
     /** Browser-resolved downloads (the site's 403s the plain HTTP client). */
     private val browserRequests = mutableMapOf<String, DownloadRequest>()
     private val browserMirrors = mutableMapOf<String, List<String>>()
+    private val saveFailed = mutableSetOf<String>()
     private val prepareJobs = mutableMapOf<String, Job>()
     private val attempts = mutableMapOf<String, Int>()
 
@@ -110,7 +111,15 @@ object Downloads {
         // Browser-resolved downloads have their own retry chain; the native
         // poller must not race it and thrash the site with duplicate requests.
         if (task.id in browserRequests) {
-            retrying.remove(task.id)
+            // A browser-resolved download has its own chain, but a mid-stream
+            // network abort is worth one automatic Range-resume.
+            if ((attempts[task.id] ?: 0) == 0 && task.error?.contains("interrupted", true) == true) {
+                attempts[task.id] = 1
+                retrying.remove(task.id)
+                retry(context, task.id, auto = true)
+            } else {
+                retrying.remove(task.id)
+            }
             return
         }
         val n = (attempts[task.id] ?: 0) + 1
@@ -179,7 +188,34 @@ object Downloads {
     }
 
     /** Re-issue the stored request after the user taps RETRY. */
-    fun retry(context: Context, id: String) {
+    fun retry(context: Context, id: String, auto: Boolean = false) {
+        // A save failure happens AFTER the file is fully downloaded: retrying
+        // the save reuses the cached file instead of downloading it again.
+        val nativeTask = runCatching { parseDownloads(Native.downloads()) }.getOrNull()
+            ?.firstOrNull { it.id == id }
+        if (id in saveFailed && nativeTask != null &&
+            !nativeTask.tempPath.isNullOrBlank() && File(nativeTask.tempPath!!).isFile
+        ) {
+            scope.launch {
+                save(context.applicationContext, nativeTask.copy(state = "saving", error = null))
+            }
+            return
+        }
+        // A network interruption mid-file can resume with a Range request:
+        // reuse the native task's stored URL and the bytes already on disk.
+        val resumable = nativeTask != null && !nativeTask.tempPath.isNullOrBlank() &&
+            File(nativeTask.tempPath!!).let { it.isFile && it.length() > 0 } &&
+            !isBlocked(nativeTask.error) && requests[id] != null
+        if (resumable) {
+            exhausted.remove(id)
+            cancelled.remove(id)
+            refreshed.remove(id)
+            retrying.remove(id)
+            if (!auto) attempts.remove(id)
+            ensurePoller(context)
+            reissue(id, requests[id]!!)
+            return
+        }
         val browser = browserRequests[id]
         if (browser != null) {
             prepareAndStart(context, browser, browserMirrors[id].orEmpty())
@@ -353,57 +389,31 @@ object Downloads {
 
     private suspend fun save(context: Context, task: DownloadProgress) {
         try {
-            val folder = context.getFolderUri()
             val temp = File(task.tempPath ?: "")
+            val folder = context.getFolderUri()
+            var usedFallback = false
             if (folder != null) {
-                val treeUri = Uri.parse(folder)
-                val mime = if (task.format.isBlank()) "application/octet-stream" else mimeFor(task.format)
-                val name = task.filename
-                val docUri = DocumentsContract.createDocument(context.contentResolver, treeUri, mime, name)
-                    ?: throw IllegalStateException("Could not create file in the chosen folder")
-                context.contentResolver.openOutputStream(docUri)?.use { out ->
-                    temp.inputStream().use { it.copyTo(out) }
-                } ?: throw IllegalStateException("Could not open destination stream")
-                val size = temp.length()
-                Repo.finishSave(task.id, docUri.toString(), "", name, size)
-            } else if (android.os.Build.VERSION.SDK_INT >= 29) {
-                // No folder picked: save where the user can actually see it —
-                // the public Downloads folder — instead of app-private
-                // storage that most file managers refuse to show.
-                val resolver = context.contentResolver
-                val mime = if (task.format.isBlank()) "application/octet-stream" else mimeFor(task.format)
-                val values = android.content.ContentValues().apply {
-                    put(android.provider.MediaStore.Downloads.DISPLAY_NAME, task.filename)
-                    put(android.provider.MediaStore.Downloads.MIME_TYPE, mime)
-                    put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
-                }
-                val itemUri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                    ?: throw IllegalStateException("Could not create file in Downloads")
                 try {
-                    resolver.openOutputStream(itemUri)?.use { out ->
-                        temp.inputStream().use { it.copyTo(out) }
-                    } ?: throw IllegalStateException("Could not open destination stream")
+                    saveToChosenFolder(context, folder, task, temp)
                 } catch (e: Exception) {
-                    try { resolver.delete(itemUri, null, null) } catch (_: Exception) {}
-                    throw e
+                    // A stale SAF permission or a moved folder must not lose a
+                    // finished download — put it in the public Downloads folder.
+                    android.util.Log.w("Downloads", "chosen folder failed, using Downloads", e)
+                    context.setFolderUri(null)
+                    android.widget.Toast.makeText(
+                        context,
+                        "Chosen folder unavailable — saved to Downloads instead",
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                    usedFallback = true
                 }
-                values.clear()
-                values.put(android.provider.MediaStore.Downloads.IS_PENDING, 0)
-                resolver.update(itemUri, values, null, null)
-                // The provider may have renamed the file on a collision.
-                val name = resolver.query(itemUri, arrayOf(android.provider.MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)
-                    ?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: task.filename
-                Repo.finishSave(task.id, itemUri.toString(), "", name, temp.length())
-            } else {
-                val dir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
-                dir.mkdirs()
-                val target = uniqueFile(dir, task.filename)
-                temp.copyTo(target, overwrite = true)
-                Repo.finishSave(task.id, "", target.absolutePath, target.name, target.length())
             }
+            if (folder == null || usedFallback) saveToDownloads(context, task, temp)
             try { temp.delete() } catch (_: Exception) {}
+            saveFailed.remove(task.id)
             _saved.tryEmit(Unit)
         } catch (e: Exception) {
+            saveFailed.add(task.id)
             Repo.failSave(task.id, e.message ?: "Could not save file")
         } finally {
             // Handled is only a de-duplication guard for THIS save: clearing
@@ -415,6 +425,68 @@ object Downloads {
             browserRequests.remove(task.id)
             browserMirrors.remove(task.id)
             attempts.remove(task.id)
+        }
+    }
+
+    /**
+     * DocumentsContract.createDocument needs a *document* URI for the parent
+     * folder. Passing the raw tree URI (as we did) makes Android's external
+     * storage provider throw "Invalid URI".
+     */
+    private suspend fun saveToChosenFolder(context: Context, folder: String, task: DownloadProgress, temp: File) {
+        val treeUri = Uri.parse(folder)
+        val treeId = DocumentsContract.getTreeDocumentId(treeUri)
+            ?: throw IllegalStateException("Could not read the chosen folder")
+        val parentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, treeId)
+        val mime = if (task.format.isBlank()) "application/octet-stream" else mimeFor(task.format)
+        val docUri = DocumentsContract.createDocument(context.contentResolver, parentUri, mime, task.filename)
+            ?: throw IllegalStateException("Could not create file in the chosen folder")
+        try {
+            context.contentResolver.openOutputStream(docUri)?.use { out ->
+                temp.inputStream().use { it.copyTo(out) }
+            } ?: throw IllegalStateException("Could not open destination stream")
+        } catch (e: Exception) {
+            runCatching { context.contentResolver.delete(docUri, null, null) }
+            throw e
+        }
+        val name = context.contentResolver.query(
+            docUri, arrayOf(android.provider.MediaStore.MediaColumns.DISPLAY_NAME), null, null, null,
+        )?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: task.filename
+        Repo.finishSave(task.id, docUri.toString(), "", name, temp.length())
+    }
+
+    private suspend fun saveToDownloads(context: Context, task: DownloadProgress, temp: File) {
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            val resolver = context.contentResolver
+            val mime = if (task.format.isBlank()) "application/octet-stream" else mimeFor(task.format)
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Downloads.DISPLAY_NAME, task.filename)
+                put(android.provider.MediaStore.Downloads.MIME_TYPE, mime)
+                put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
+            }
+            val itemUri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: throw IllegalStateException("Could not create file in Downloads")
+            try {
+                resolver.openOutputStream(itemUri)?.use { out ->
+                    temp.inputStream().use { it.copyTo(out) }
+                } ?: throw IllegalStateException("Could not open destination stream")
+            } catch (e: Exception) {
+                runCatching { resolver.delete(itemUri, null, null) }
+                throw e
+            }
+            values.clear()
+            values.put(android.provider.MediaStore.Downloads.IS_PENDING, 0)
+            resolver.update(itemUri, values, null, null)
+            val name = resolver.query(
+                itemUri, arrayOf(android.provider.MediaStore.MediaColumns.DISPLAY_NAME), null, null, null,
+            )?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: task.filename
+            Repo.finishSave(task.id, itemUri.toString(), "", name, temp.length())
+        } else {
+            val dir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
+            dir.mkdirs()
+            val target = uniqueFile(dir, task.filename)
+            temp.copyTo(target, overwrite = true)
+            Repo.finishSave(task.id, "", target.absolutePath, target.name, target.length())
         }
     }
 

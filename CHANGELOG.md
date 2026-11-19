@@ -4,6 +4,18 @@ All notable changes to Quiet Archive are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [semantic versioning](https://semver.org/).
 
+## [1.2.3] - 2026-11-19
+
+### Fixed
+- Saving to a folder picked with the system file picker no longer fails with
+  "Invalid URI": the SAF tree URI is now converted into a document URI before
+  `createDocument`. If a saved folder is no longer accessible, the finished
+  file falls back to the public Downloads folder instead of being lost.
+- Tapping RETRY after a save error re-saves the already downloaded file
+  instead of downloading it again.
+- A connection that drops mid-download is resumed once automatically with a
+  Range request, keeping the bytes already received.
+
 ## [1.2.2] - 2026-11-19
 
 ### Changed
