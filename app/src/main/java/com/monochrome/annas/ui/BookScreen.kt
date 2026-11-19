@@ -116,7 +116,7 @@ private fun BookContent(
                     vm.startDownload(book, book.downloads.firstOrNull { it.kind == "slow" } ?: book.downloads.firstOrNull())
                 }
             }, modifier = Modifier.weight(1f), enabled = !active, icon = if (inLibrary != null) MonoIcons.Open else MonoIcons.Download)
-            GhostButton(if (saved) "SAVED" else "SAVE", { vm.saveBookmark(book.id) }, modifier = Modifier, selected = saved)
+            GhostButton(if (saved) "SAVED" else "SAVE", { vm.saveBookmark(book.id, book) }, modifier = Modifier, selected = saved)
         }
         if (active) {
             Spacer(Modifier.height(8.dp))

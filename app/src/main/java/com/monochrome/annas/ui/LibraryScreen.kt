@@ -59,7 +59,7 @@ fun LibraryScreen(vm: AppViewModel, onOpen: (LibraryItem) -> Unit, onOpenBook: (
     val items by vm.library.collectAsState()
     androidx.compose.runtime.LaunchedEffect(Unit) {
         vm.refreshLibrary()
-        vm.refreshSaved(force = true)
+        vm.refreshSaved()
     }
     androidx.compose.runtime.LaunchedEffect(tab) { if (tab == 1) vm.refreshSaved() }
 

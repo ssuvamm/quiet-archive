@@ -4,6 +4,15 @@ All notable changes to Quiet Archive are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [semantic versioning](https://semver.org/).
 
+## [1.2.2] - 2026-11-19
+
+### Changed
+- Saved-book titles, authors, covers and metadata are cached on device. The
+  SAVED tab now shows real rows immediately after launch; network refreshes
+  happen quietly in the background at most once a day.
+- Book covers are cached on disk too, so opening the library cold no longer
+  re-downloads every thumbnail.
+
 ## [1.2.1] - 2026-11-19
 
 ### Fixed

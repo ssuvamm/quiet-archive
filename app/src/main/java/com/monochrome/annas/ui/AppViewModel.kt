@@ -17,6 +17,7 @@ import com.monochrome.annas.data.parseLibrary
 import com.monochrome.annas.data.parseOk
 import com.monochrome.annas.data.parseSearchResults
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -256,6 +257,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _library.value = parseLibrary(Repo.library())
             } catch (_: Exception) {}
             libraryLoading = false
+            // A bookmark may have become a downloaded book — drop it from the
+            // SAVED rows now that we know which ids are in the library.
+            refreshSaved()
         }
     }
 
@@ -315,32 +319,55 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var hasDownloadsFilter by mutableStateOf(false)
     val downloadAvailability = androidx.compose.runtime.mutableStateMapOf<String, Boolean>()
 
-    // Bookmarked books that are not downloaded, fetched lazily for the SAVED tab.
-    var savedBooks by mutableStateOf<List<SavedBook>>(emptyList())
+    // Bookmarks that are not downloaded. Seeded from on-device metadata so
+    // the SAVED tab shows real rows on the first frame after launch.
+    var savedBooks by mutableStateOf(context.getSavedBookCache())
     var savedLoading by mutableStateOf(false)
         private set
-    private var savedFetchedOnce = false
+    private var savedRefreshJob: Job? = null
 
-    /** Build the SAVED tab list: bookmarks the library cannot show. */
+    private fun savedBookFrom(id: String, book: Book, url: String) = SavedBook(
+        id = id,
+        title = book.title,
+        authors = book.authors,
+        cover = book.cover,
+        url = url,
+        meta = listOfNotNull(
+            book.metadata.firstOrNull { it.label.equals("Year", true) }?.value,
+            book.metadata.firstOrNull { it.label.equals("Format", true) }?.value?.trim('.')?.uppercase(),
+            book.metadata.firstOrNull { it.label.equals("Language", true) }?.value?.uppercase(),
+            book.metadata.firstOrNull { it.label.equals("Size", true) }?.value?.uppercase(),
+        ).joinToString(" · "),
+    )
+
+    /**
+     * Publish cached metadata immediately, then refresh stale/missing entries
+     * in the background. A launch with a warm cache does zero network work.
+     */
     fun refreshSaved(force: Boolean = false) {
-        if (savedFetchedOnce && !force) return
-        savedFetchedOnce = true
-        viewModelScope.launch {
+        val known = context.getSavedBookCache().associateBy { it.id }.toMutableMap()
+        val downloadedIds = _library.value.map { it.id }.toSet()
+        val ids = context.getSavedBooks().filter { it !in downloadedIds }
+
+        // Never show an empty list while metadata is sitting on the device.
+        savedBooks = ids.mapNotNull { known[it] }
+
+        val cacheAge = context.getSavedCacheAgeMs()
+        val upToDate = !force && cacheAge < 24 * 60 * 60 * 1000L && ids.all { it in known }
+        if (upToDate || (savedRefreshJob?.isActive == true && !force)) return
+
+        savedRefreshJob?.cancel()
+        savedRefreshJob = viewModelScope.launch {
             savedLoading = true
-            val downloadedIds = _library.value.map { it.id }.toSet()
-            val ids = context.getSavedBooks().filter { it !in downloadedIds }
-            // Keep what we already know while refreshing.
-            val known = savedBooks.associateBy { it.id }.toMutableMap()
-            savedBooks = ids.mapNotNull { known[it] }
             try {
                 withContext(Dispatchers.IO) {
                     ids.forEach { id ->
-                        if (known.containsKey(id)) return@forEach
+                        if (!force && known.containsKey(id)) return@forEach
                         val url = "${context.getBaseUrl().trimEnd('/')}/md5/$id"
                         var book: Book? = null
                         // Fast path: the native HTTP client resolves most
-                        // records in milliseconds, so bookmarks show up
-                        // immediately instead of waiting on the WebView.
+                        // records in milliseconds; the browser session is the
+                        // fallback when the site blocks it.
                         try {
                             val o = org.json.JSONObject(Repo.book(url))
                             if (o.optBoolean("ok", false)) book = parseBook(o.toString())
@@ -352,18 +379,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             } catch (_: Exception) {}
                         }
                         val resolved = book
-                        known[id] = if (resolved != null) {
-                            val meta = listOfNotNull(
-                                resolved.metadata.firstOrNull { it.label.equals("Year", true) }?.value,
-                                resolved.metadata.firstOrNull { it.label.equals("Format", true) }?.value?.trim('.')?.uppercase(),
-                                resolved.metadata.firstOrNull { it.label.equals("Language", true) }?.value?.uppercase(),
-                                resolved.metadata.firstOrNull { it.label.equals("Size", true) }?.value?.uppercase(),
-                            ).joinToString(" · ")
-                            SavedBook(id, resolved.title, resolved.authors, resolved.cover, url, meta)
-                        } else {
-                            SavedBook(id, "Saved book", emptyList(), null, url, "")
+                        if (resolved != null) {
+                            known[id] = savedBookFrom(id, resolved, url)
+                        } else if (!known.containsKey(id)) {
+                            // Keep a usable row even when the record is offline.
+                            known[id] = SavedBook(id, "Saved book", emptyList(), null, url, "")
                         }
-                        // Publish progressively so rows appear as they resolve.
+                        context.setSavedBookCache(known.values.toList())
                         savedBooks = context.getSavedBooks()
                             .filter { it !in downloadedIds }
                             .mapNotNull { known[it] }
@@ -375,10 +397,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Trim the saved list to the current bookmarks (used after un-saving). */
+    /** Trim the saved list and its cache to the current bookmarks. */
     fun pruneSaved() {
         val ids = context.getSavedBooks().toSet()
         savedBooks = savedBooks.filter { it.id in ids }
+        context.setSavedBookCache(context.getSavedBookCache().filter { it.id in ids })
     }
 
     // On the real Anna's Archive nearly every record offers a slow download,
@@ -393,12 +416,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
-    fun saveBookmark(id: String): Boolean {
+    fun saveBookmark(id: String, book: Book? = null): Boolean {
         val now = context.toggleSaved(id)
         savedIds = context.getSavedBooks().toSet()
         if (now) {
-            // Newly bookmarked: let the SAVED tab resolve it in the background.
-            refreshSaved(force = true)
+            if (book != null) {
+                // The book page already has all the metadata: seed the cache
+                // so the SAVED tab is correct instantly, with no fetch.
+                val known = context.getSavedBookCache().associateBy { it.id }.toMutableMap()
+                known[id] = savedBookFrom(id, book, "${context.getBaseUrl().trimEnd('/')}/md5/$id")
+                context.setSavedBookCache(known.values.toList())
+                savedBooks = context.getSavedBooks().mapNotNull { known[it] }
+            }
+            refreshSaved(force = book == null)
         } else {
             pruneSaved()
         }

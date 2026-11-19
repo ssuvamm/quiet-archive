@@ -42,18 +42,30 @@ import android.graphics.BitmapFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import android.util.LruCache
+import java.io.File
 
 private val imageCache = LruCache<String, android.graphics.Bitmap>(24)
 
 @Composable
 fun RemoteImage(url: String?, modifier: Modifier = Modifier) {
+    val appContext = LocalContext.current.applicationContext
     var bmp by androidx.compose.runtime.remember(url) { androidx.compose.runtime.mutableStateOf<android.graphics.Bitmap?>(null) }
     androidx.compose.runtime.LaunchedEffect(url) {
         if (url == null) { bmp = null; return@LaunchedEffect }
         imageCache.get(url)?.let { bmp = it; return@LaunchedEffect }
         withContext(Dispatchers.IO) {
             try {
-                val bytes = Repo.fetchBytes(url)
+                // Keep covers on disk too, so a cold launch of the library or
+                // SAVED tab doesn't have to re-fetch every thumbnail.
+                val file = File(appContext.cacheDir, "covers/${url.hashCode()}")
+                val bytes = if (file.isFile) {
+                    file.readBytes()
+                } else {
+                    Repo.fetchBytes(url)?.also { data ->
+                        file.parentFile?.mkdirs()
+                        file.writeBytes(data)
+                    }
+                }
                 if (bytes != null) {
                     val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
                     val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)

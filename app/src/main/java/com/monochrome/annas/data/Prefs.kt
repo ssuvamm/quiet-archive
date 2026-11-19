@@ -49,6 +49,69 @@ fun Context.toggleSaved(id: String): Boolean {
     return now
 }
 
+// ---- Saved-book metadata cache ------------------------------------------
+//
+// Bookmarks used to re-fetch every /md5/ page on each launch, which made the
+// SAVED tab look empty for tens of seconds. Titles, authors, covers and
+// metadata almost never change, so keep them on device and only refresh in
+// the background when the cache is old (or a bookmark is new).
+
+private const val SAVED_CACHE_KEY = "saved_books_cache"
+
+fun Context.getSavedBookCache(): List<SavedBook> {
+    val raw = sp().getString(SAVED_CACHE_KEY, null) ?: return emptyList()
+    return try {
+        val o = JSONObject(raw)
+        val arr = o.optJSONArray("books") ?: return emptyList()
+        (0 until arr.length()).mapNotNull { i ->
+            val b = arr.optJSONObject(i) ?: return@mapNotNull null
+            val id = b.optString("id").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val authors = b.optJSONArray("authors")
+            SavedBook(
+                id = id,
+                title = b.optString("title", "Saved book"),
+                authors = if (authors == null) emptyList() else
+                    (0 until authors.length()).mapNotNull { j -> authors.optString(j).takeIf { it.isNotBlank() } },
+                cover = b.optString("cover").takeIf { it.isNotBlank() },
+                url = b.optString("url"),
+                meta = b.optString("meta"),
+            )
+        }
+    } catch (_: Exception) {
+        emptyList()
+    }
+}
+
+/** Age of the on-device metadata cache; Long.MAX_VALUE when there is none. */
+fun Context.getSavedCacheAgeMs(): Long {
+    val raw = sp().getString(SAVED_CACHE_KEY, null) ?: return Long.MAX_VALUE
+    return try {
+        System.currentTimeMillis() - JSONObject(raw).optLong("ts", 0L)
+    } catch (_: Exception) {
+        Long.MAX_VALUE
+    }
+}
+
+fun Context.setSavedBookCache(books: List<SavedBook>) {
+    val arr = JSONArray()
+    books.forEach { b ->
+        val o = JSONObject()
+            .put("id", b.id)
+            .put("title", b.title)
+            .put("url", b.url)
+            .put("meta", b.meta)
+        val authors = JSONArray()
+        b.authors.forEach { authors.put(it) }
+        o.put("authors", authors)
+        if (!b.cover.isNullOrBlank()) o.put("cover", b.cover)
+        arr.put(o)
+    }
+    val root = JSONObject()
+        .put("ts", System.currentTimeMillis())
+        .put("books", arr)
+    sp().edit().putString(SAVED_CACHE_KEY, root.toString()).apply()
+}
+
 // ---- Reader -------------------------------------------------------------
 
 /** Position inside a book: chapter index plus how far down that chapter we are. */
