@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
 import com.monochrome.annas.Native
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -11,17 +12,29 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 
 object Downloads {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val _tasks = MutableStateFlow<List<DownloadProgress>>(emptyList())
-    val tasks = _tasks.asStateFlow()
+    private val _nativeTasks = MutableStateFlow<List<DownloadProgress>>(emptyList())
+
+    /** Tasks whose download page is being resolved through the browser session. */
+    private val _preparing = MutableStateFlow<List<DownloadProgress>>(emptyList())
+
+    val tasks: StateFlow<List<DownloadProgress>> = combine<
+        List<DownloadProgress>, List<DownloadProgress>, List<DownloadProgress>
+    >(_nativeTasks, _preparing) { native, preparing ->
+        (native + preparing).sortedByDescending { it.createdAt }
+    }.stateIn(scope, SharingStarted.Eagerly, emptyList())
     private val _saved = MutableSharedFlow<Unit>(extraBufferCapacity = 16)
     val saved = _saved.asSharedFlow()
     private var pollJob: Job? = null
@@ -45,6 +58,12 @@ object Downloads {
     /** Untried mirror links for each id, in order of preference. */
     private val fallbacks = mutableMapOf<String, ArrayDeque<String>>()
 
+    /** Browser-resolved downloads (the site's 403s the plain HTTP client). */
+    private val browserRequests = mutableMapOf<String, DownloadRequest>()
+    private val browserMirrors = mutableMapOf<String, List<String>>()
+    private val prepareJobs = mutableMapOf<String, Job>()
+    private val attempts = mutableMapOf<String, Int>()
+
     /** Errors that mean the site's bot protection stopped the plain HTTP client. */
     private fun isBlocked(error: String?): Boolean =
         error != null && (error.contains("Blocked by the site protection", true) ||
@@ -55,8 +74,8 @@ object Downloads {
         if (pollJob?.isActive == true) return
         pollJob = scope.launch {
             while (isActive) {
-                try { _tasks.value = parseDownloads(Native.downloads()) } catch (_: Exception) {}
-                val current = _tasks.value
+                try { _nativeTasks.value = parseDownloads(Native.downloads()) } catch (_: Exception) {}
+                val current = _nativeTasks.value
                 current.filter { it.state == "saving" && it.id !in handled }.forEach { task ->
                     handled.add(task.id)
                     scope.launch { save(context.applicationContext, task) }
@@ -88,6 +107,19 @@ object Downloads {
      */
     private suspend fun retryFailed(context: Context, task: DownloadProgress) {
         if (!retrying.add(task.id)) return
+        // Browser-resolved downloads have their own retry chain; the native
+        // poller must not race it and thrash the site with duplicate requests.
+        if (task.id in browserRequests) {
+            retrying.remove(task.id)
+            return
+        }
+        val n = (attempts[task.id] ?: 0) + 1
+        attempts[task.id] = n
+        if (n > 3) {
+            exhausted.add(task.id)
+            retrying.remove(task.id)
+            return
+        }
         try {
             val json = requests[task.id] ?: return
             if (isBlocked(task.error) && refreshed.add(task.id)) {
@@ -138,6 +170,9 @@ object Downloads {
         requests.remove(id)
         fallbacks.remove(id)
         refreshed.remove(id)
+        attempts.remove(id)
+        prepareJobs.remove(id)?.cancel()
+        clearPreparing(id)
         scope.launch {
             try { Native.cancelDownload(id) } catch (_: Exception) {}
         }
@@ -145,13 +180,175 @@ object Downloads {
 
     /** Re-issue the stored request after the user taps RETRY. */
     fun retry(context: Context, id: String) {
+        val browser = browserRequests[id]
+        if (browser != null) {
+            prepareAndStart(context, browser, browserMirrors[id].orEmpty())
+            return
+        }
         val json = requests[id] ?: return
         exhausted.remove(id)
         cancelled.remove(id)
         refreshed.remove(id)
         retrying.remove(id)
+        attempts.remove(id)
         ensurePoller(context)
         reissue(id, json)
+    }
+
+    // ---- browser-assisted downloads --------------------------------------
+    //
+    // Anna's Archive's DDoS-Guard fingerprints the plain HTTP client and
+    // answers every /slow_download/ request with HTTP 403, even with fresh
+    // cookies. The app's WebView session passes that check (that is why search
+    // works), so resolve the waitlist page there and hand only the final file
+    // URL to the native downloader — partner servers don't run that guard.
+
+    /** Start a download, resolving slow links through the browser session first. */
+    fun prepareAndStart(context: Context, request: DownloadRequest, mirrors: List<String>): String? {
+        val json = requestJson(request, request.url)
+        requests[request.id] = json.toString()
+        browserRequests[request.id] = request
+        browserMirrors[request.id] = mirrors.filter { it != request.url }
+        refreshed.remove(request.id)
+        retrying.remove(request.id)
+        exhausted.remove(request.id)
+        cancelled.remove(request.id)
+        attempts.remove(request.id)
+        fallbacks[request.id] = ArrayDeque(mirrors.filter { it != request.url })
+        ensurePoller(context)
+        prepareJobs.remove(request.id)?.cancel()
+        _preparing.value = _preparing.value.filter { it.id != request.id } + preparingTask(request, "waiting", "Opening the download page…")
+        prepareJobs[request.id] = scope.launch {
+            try {
+                runPrepare(context.applicationContext, request, json.toString())
+            } catch (e: CancellationException) {
+                clearPreparing(request.id)
+            }
+        }
+        return request.id
+    }
+
+    private suspend fun runPrepare(context: Context, request: DownloadRequest, json: String) {
+        val candidates = listOf(request.url) + (fallbacks[request.id]?.toList().orEmpty())
+        var lastError = "Download failed"
+        for (url in candidates) {
+            if (request.id in cancelled) return
+            try {
+                val finalUrl = if (url.contains("/slow_download/")) {
+                    resolveSlowWithBrowser(context, request, url)
+                } else url
+                val updated = JSONObject(json).put("url", finalUrl).toString()
+                requests[request.id] = updated
+                val result = withContext(Dispatchers.IO) { Native.startDownload(updated) }
+                val o = JSONObject(result)
+                if (o.optBoolean("ok", false)) {
+                    clearPreparing(request.id)
+                    ensurePoller(context) // restart the saver — there were no native tasks before this
+                    return
+                }
+                lastError = o.optString("error", lastError)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                lastError = e.message ?: lastError
+                if (isBlocked(lastError)) {
+                    try { WebFetch.fetch(request.bookUrl ?: context.getBaseUrl()) } catch (_: Exception) {}
+                }
+            }
+        }
+        android.util.Log.w("Downloads", "browser-resolved download failed for ${request.id}: $lastError")
+        exhausted.add(request.id)
+        _preparing.value = _preparing.value.filter { it.id != request.id } + preparingTask(request, "error", lastError)
+    }
+
+    /** Fetch the slow-download page through WebFetch, waiting out its waitlist. */
+    private suspend fun resolveSlowWithBrowser(context: Context, request: DownloadRequest, url: String): String {
+        var current = url
+        val startedAt = System.currentTimeMillis()
+        repeat(8) { attempt ->
+            if (request.id in cancelled) throw CancellationException("cancelled")
+            if (System.currentTimeMillis() - startedAt > 240_000) {
+                throw IllegalStateException("Download waitlist timed out. Try again shortly.")
+            }
+            val html = WebFetch.fetch(current, 60_000L)
+            android.util.Log.d(
+                "Downloads",
+                "slow page attempt ${attempt + 1}: len=${html.length} challenge=${html.length < 2000}",
+            )
+
+            // Final partner file link, same shape the native core looks for.
+            val pos = html.indexOf("mb-4 text-xl font-bold")
+            if (pos >= 0) {
+                val tail = html.substring(pos, minOf(pos + 3000, html.length))
+                val h = tail.indexOf("href=\"")
+                if (h >= 0) {
+                    val end = tail.indexOf('"', h + 6)
+                    if (end > h) {
+                        val candidate = tail.substring(h + 6, end)
+                        if (candidate.startsWith("http") &&
+                            hostOf(candidate) != hostOf(url)
+                        ) return candidate
+                    }
+                }
+            }
+
+            // Waitlist: the page asks the browser to come back in N seconds.
+            val w = html.indexOf("waitSeconds")
+            if (w >= 0) {
+                val tail = html.substring(w, minOf(w + 60, html.length))
+                val digits = tail.dropWhile { !it.isDigit() }.takeWhile { it.isDigit() }
+                val seconds = (digits.toIntOrNull() ?: 0).coerceIn(1, 90)
+                updatePreparing(request, "waiting", "Waiting ${seconds}s before download…")
+                delay(seconds * 1000L)
+                return@repeat
+            }
+
+            if (html.contains("ddos-guard", true) || html.contains("checking your browser", true) || html.length < 2000) {
+                throw IllegalStateException("Blocked by the site protection (HTTP 403). Refreshing the session…")
+            }
+            throw IllegalStateException("Could not resolve the download link. Trying another server…")
+        }
+        throw IllegalStateException("Download waitlist timed out. Try again shortly.")
+    }
+
+    private fun hostOf(url: String): String = try {
+        java.net.URL(url).host.lowercase()
+    } catch (_: Exception) { url }
+
+    private fun requestJson(request: DownloadRequest, url: String): JSONObject = JSONObject().apply {
+        put("id", request.id)
+        put("title", request.title)
+        put("authors", org.json.JSONArray(request.authors))
+        put("format", request.format)
+        put("url", url)
+        put("cover", request.cover)
+        put("book_url", request.bookUrl)
+        put("replace", request.replace)
+    }
+
+    private fun preparingTask(request: DownloadRequest, state: String, error: String) = DownloadProgress(
+        id = request.id,
+        title = request.title,
+        authors = request.authors,
+        state = state,
+        received = 0,
+        total = 0,
+        speed = 0,
+        format = request.format,
+        filename = "",
+        tempPath = null,
+        error = error,
+        createdAt = System.currentTimeMillis(),
+    )
+
+    private fun updatePreparing(request: DownloadRequest, state: String, error: String) {
+        _preparing.value = _preparing.value.map { t ->
+            if (t.id == request.id) t.copy(state = state, error = error) else t
+        }
+    }
+
+    private fun clearPreparing(id: String) {
+        _preparing.value = _preparing.value.filter { it.id != id }
     }
 
     private suspend fun save(context: Context, task: DownloadProgress) {
@@ -215,6 +412,9 @@ object Downloads {
             // sticking in "saving" forever.
             handled.remove(task.id)
             requests.remove(task.id)
+            browserRequests.remove(task.id)
+            browserMirrors.remove(task.id)
+            attempts.remove(task.id)
         }
     }
 
@@ -240,6 +440,7 @@ object Downloads {
         retrying.remove(request.id)
         exhausted.remove(request.id)
         cancelled.remove(request.id)
+        attempts.remove(request.id)
         fallbacks[request.id] = ArrayDeque(mirrors.filter { it != request.url })
         val result = Native.startDownload(json.toString())
         return try {

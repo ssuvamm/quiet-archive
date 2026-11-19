@@ -309,7 +309,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             bookUrl = book.sourceUrl,
             replace = replace,
         )
-        com.monochrome.annas.data.Downloads.start(context, req, candidates.drop(1))
+        com.monochrome.annas.data.Downloads.prepareAndStart(context, req, candidates.drop(1))
     }
 
     var hasDownloadsFilter by mutableStateOf(false)

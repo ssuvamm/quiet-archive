@@ -4,6 +4,18 @@ All notable changes to Quiet Archive are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [semantic versioning](https://semver.org/).
 
+## [1.2.1] - 2026-11-19
+
+### Fixed
+- Downloads no longer get stuck at 403 or endlessly cycling through mirrors.
+  The site's DDoS-Guard blocks the native HTTP client on every `/slow_download/`
+  page, so the app now resolves that page (including its waitlist) through the
+  same in-app browser session that search uses, then hands only the final file
+  link to the downloader. Two consecutive books downloaded successfully on a
+  physical phone with this build.
+- Automatic retries are capped so a failed download stops cleanly and shows a
+  useful error instead of hammering the site every two seconds.
+
 ## [1.2.0] - 2026-11-18
 
 ### Added
