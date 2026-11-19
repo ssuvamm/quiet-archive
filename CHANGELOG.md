@@ -4,6 +4,24 @@ All notable changes to Quiet Archive are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [semantic versioning](https://semver.org/).
 
+## [1.3.0] - 2026-11-19
+
+### Added
+- AUDIOBOOKIFY on downloaded books (book page and library menu): turns the
+  book into a WAV audiobook with the phone's text-to-speech engine, stores it
+  next to the book in your chosen folder, and links it to that book.
+- LISTEN opens the linked audiobook in a fuller player: 10/15/30-second skips,
+  ten playback speeds, sleep timer (including pause at end of book), and
+  named bookmarks you can jump back to. Position and speed are remembered.
+- Chapter bookmarks and a chapter slider in the reader, plus adjustable line
+  spacing, margins, font family and screen brightness.
+- Search history with recent queries and a CLEAR action.
+
+### Changed
+- The library is now the first screen shown on launch.
+- Large FB2 and text books are streamed chapter-by-chapter instead of being
+  loaded wholly into memory, which could crash the reader on an 80+ MB book.
+
 ## [1.2.3] - 2026-11-19
 
 ### Fixed

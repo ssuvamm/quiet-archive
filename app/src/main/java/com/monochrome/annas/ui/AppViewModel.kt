@@ -55,6 +55,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var searchLang by mutableStateOf("any")
     var searchSort by mutableStateOf("relevance")
 
+    var searchHistory by mutableStateOf(context.getSearchHistory())
+        private set
+
     var searchLoading by mutableStateOf(false)
     var searchError by mutableStateOf<String?>(null)
     var searchResults by mutableStateOf<List<SearchResult>>(emptyList())
@@ -126,6 +129,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun search(reset: Boolean = true) {
+        if (searchQuery.isNotBlank()) {
+            context.addSearchHistory(searchQuery)
+            searchHistory = context.getSearchHistory()
+        }
         if (reset) { searchPage = 1; searchResults = emptyList(); searchExhausted = false }
         searchLoading = true
         searchError = null
@@ -197,6 +204,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 searchLoading = false
             }
         }
+    }
+
+    fun clearSearchHistory() {
+        context.clearSearchHistory()
+        searchHistory = emptyList()
     }
 
     fun loadMore() {
@@ -280,6 +292,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     java.io.File(item.localPath).delete()
                 }
             } catch (_: Exception) {}
+            context.getAudiobookUri(item.id)?.let { link ->
+                try {
+                    context.contentResolver.delete(android.net.Uri.parse(link), null, null)
+                } catch (_: Exception) {}
+            }
+            context.setAudiobookUri(item.id, null)
+            audioLinks = context.getAudiobookLinks()
             Repo.deleteItem(item.id)
             refreshLibrary()
             onDone()
@@ -314,6 +333,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             replace = replace,
         )
         com.monochrome.annas.data.Downloads.prepareAndStart(context, req, candidates.drop(1))
+    }
+
+    var audioLinks by mutableStateOf(context.getAudiobookLinks())
+        private set
+
+    /** Create a local audiobook next to the book and link it for listening. */
+    fun audiobookify(item: LibraryItem, onStatus: (String) -> Unit, onDone: (String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val doc = Reader.open(context, item)
+                val uri = AudioExport.export(context, doc, item.title, item.id) { chapter, total ->
+                    onStatus("Speaking chapter $chapter / $total…")
+                }
+                audioLinks = context.getAudiobookLinks()
+                onDone(null)
+            } catch (e: Exception) {
+                onDone(e.message ?: "Could not create the audiobook")
+            }
+        }
     }
 
     var hasDownloadsFilter by mutableStateOf(false)

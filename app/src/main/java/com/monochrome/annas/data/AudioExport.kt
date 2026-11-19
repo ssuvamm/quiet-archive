@@ -1,9 +1,12 @@
 package com.monochrome.annas.data
 
 import android.content.Context
+import android.net.Uri
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.widget.Toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -25,6 +28,7 @@ object AudioExport {
         context: Context,
         doc: ReaderDocument,
         title: String,
+        bookId: String?,
         onProgress: (chapter: Int, total: Int) -> Unit,
     ): String = withContext(Dispatchers.IO) {
         val engine = openEngine(context)
@@ -47,7 +51,7 @@ object AudioExport {
             val merged = File(dir, "audiobook.wav")
             mergeWav(parts, merged)
             val name = sanitize(title) + " (audiobook).wav"
-            saveToDownloads(context, merged, name)
+            val uri = saveAlongsideBook(context, merged, name, bookId)
             parts.forEach { it.delete() }
             merged.delete()
             name
@@ -164,7 +168,34 @@ object AudioExport {
             ((bytes[at + 2].toInt() and 0xFF) shl 16) or
             ((bytes[at + 3].toInt() and 0xFF) shl 24)
 
-    private fun saveToDownloads(context: Context, file: File, name: String) {
+    /** Save next to the book when a folder is chosen, otherwise in Downloads. */
+    private fun saveAlongsideBook(context: Context, file: File, name: String, bookId: String?): String {
+        val folder = context.getFolderUri()
+        if (folder != null) {
+            try {
+                val tree = Uri.parse(folder)
+                val treeId = DocumentsContract.getTreeDocumentId(tree)
+                    ?: throw IllegalStateException("Could not read the chosen folder")
+                val parent = DocumentsContract.buildDocumentUriUsingTree(tree, treeId)
+                val doc = DocumentsContract.createDocument(context.contentResolver, parent, "audio/wav", name)
+                    ?: throw IllegalStateException("Could not create the audiobook file")
+                context.contentResolver.openOutputStream(doc)?.use { out ->
+                    file.inputStream().use { it.copyTo(out) }
+                } ?: throw IllegalStateException("Could not write the audiobook")
+                val uri = doc.toString()
+                if (bookId != null) context.setAudiobookUri(bookId, uri)
+                return uri
+            } catch (e: Exception) {
+                context.setFolderUri(null)
+                Toast.makeText(context, "Chosen folder unavailable — saved to Downloads instead", Toast.LENGTH_LONG).show()
+            }
+        }
+        val uri = saveToDownloads(context, file, name)
+        if (bookId != null) context.setAudiobookUri(bookId, uri)
+        return uri
+    }
+
+    private fun saveToDownloads(context: Context, file: File, name: String): String {
         if (android.os.Build.VERSION.SDK_INT >= 29) {
             val resolver = context.contentResolver
             val values = android.content.ContentValues().apply {
@@ -174,16 +205,24 @@ object AudioExport {
             }
             val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                 ?: throw IllegalStateException("Could not write to Downloads.")
-            resolver.openOutputStream(uri)?.use { out ->
-                file.inputStream().use { it.copyTo(out) }
-            } ?: throw IllegalStateException("Could not write to Downloads.")
+            try {
+                resolver.openOutputStream(uri)?.use { out ->
+                    file.inputStream().use { it.copyTo(out) }
+                } ?: throw IllegalStateException("Could not write to Downloads.")
+            } catch (e: Exception) {
+                runCatching { resolver.delete(uri, null, null) }
+                throw e
+            }
             values.clear()
             values.put(android.provider.MediaStore.Downloads.IS_PENDING, 0)
             resolver.update(uri, values, null, null)
+            return uri.toString()
         } else {
             val dir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
             dir.mkdirs()
-            file.copyTo(File(dir, name), overwrite = true)
+            val target = File(dir, name)
+            file.copyTo(target, overwrite = true)
+            return target.absolutePath
         }
     }
 

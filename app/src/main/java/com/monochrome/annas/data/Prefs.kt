@@ -141,6 +141,30 @@ fun Context.setReaderFontSize(v: Float) { sp().edit().putFloat("reader_font", v)
 fun Context.getReaderTheme(): String = sp().getString("reader_theme", "paper") ?: "paper"
 fun Context.setReaderTheme(v: String) { sp().edit().putString("reader_theme", v).apply() }
 
+fun Context.getReaderLineHeight(): Float = sp().getFloat("reader_line", 1.65f)
+fun Context.setReaderLineHeight(v: Float) { sp().edit().putFloat("reader_line", v).apply() }
+
+fun Context.getReaderFontFamily(): String = sp().getString("reader_font_family", "serif") ?: "serif"
+fun Context.setReaderFontFamily(v: String) { sp().edit().putString("reader_font_family", v).apply() }
+
+fun Context.getReaderMargin(): Int = sp().getInt("reader_margin", 6)
+fun Context.setReaderMargin(v: Int) { sp().edit().putInt("reader_margin", v).apply() }
+
+fun Context.getReaderBrightness(): Float = sp().getFloat("reader_brightness", 1f)
+fun Context.setReaderBrightness(v: Float) { sp().edit().putFloat("reader_brightness", v).apply() }
+
+fun Context.getReaderBookmarks(id: String): Set<Int> {
+    val raw = sp().getString("reader_marks_$id", "") ?: ""
+    return raw.split(',').mapNotNull { it.toIntOrNull() }.toSet()
+}
+
+fun Context.toggleReaderBookmark(id: String, chapter: Int): Set<Int> {
+    val marks = getReaderBookmarks(id).toMutableSet()
+    if (!marks.add(chapter)) marks.remove(chapter)
+    sp().edit().putString("reader_marks_$id", marks.joinToString(",")).apply()
+    return marks
+}
+
 // ---- Audio --------------------------------------------------------------
 
 fun Context.getAudioPosition(id: String): Long = sp().getLong("audio_pos_$id", 0L)
@@ -148,3 +172,73 @@ fun Context.setAudioPosition(id: String, ms: Long) { sp().edit().putLong("audio_
 
 fun Context.getAudioSpeed(): Float = sp().getFloat("audio_speed", 1f)
 fun Context.setAudioSpeed(v: Float) { sp().edit().putFloat("audio_speed", v).apply() }
+
+// ---- Search history -----------------------------------------------------
+
+fun Context.getSearchHistory(): List<String> {
+    val raw = sp().getString("search_history", "[]") ?: "[]"
+    return try {
+        val a = JSONArray(raw)
+        (0 until a.length()).mapNotNull { a.optString(it).takeIf { s -> s.isNotBlank() } }
+    } catch (_: Exception) { emptyList() }
+}
+
+fun Context.addSearchHistory(query: String) {
+    val clean = query.trim()
+    if (clean.isBlank()) return
+    val list = getSearchHistory().filter { !it.equals(clean, true) }.toMutableList()
+    list.add(0, clean)
+    sp().edit().putString("search_history", JSONArray(list.take(12)).toString()).apply()
+}
+
+fun Context.clearSearchHistory() {
+    sp().edit().putString("search_history", "[]").apply()
+}
+
+// ---- Linked audiobooks --------------------------------------------------
+
+fun Context.getAudiobookUri(bookId: String): String? = sp().getString("audiobook_$bookId", null)
+
+fun Context.setAudiobookUri(bookId: String, uri: String?) {
+    if (uri == null) sp().edit().remove("audiobook_$bookId").apply()
+    else sp().edit().putString("audiobook_$bookId", uri).apply()
+}
+
+fun Context.getAudiobookLinks(): Map<String, String> {
+    val out = mutableMapOf<String, String>()
+    val all = sp().all
+    for ((key, value) in all) {
+        if (key.startsWith("audiobook_") && value is String && value.isNotBlank()) {
+            out[key.removePrefix("audiobook_")] = value
+        }
+    }
+    return out
+}
+
+/** Bookmarks in an audiobook: position in ms -> label. */
+fun Context.getAudioBookmarks(bookId: String): Map<Long, String> {
+    val raw = sp().getString("audiobook_marks_$bookId", "{}") ?: "{}"
+    return try {
+        val o = JSONObject(raw)
+        (0 until o.length()).associate { i ->
+            val key = o.names()?.getString(i) ?: return@associate 0L to ""
+            key.toLongOrNull()?.let { it to o.optString(key) } ?: (0L to "")
+        }.filter { it.key > 0 }
+    } catch (_: Exception) { emptyMap() }
+}
+
+fun Context.addAudioBookmark(bookId: String, positionMs: Long, label: String) {
+    val marks = getAudioBookmarks(bookId).toMutableMap()
+    marks[positionMs] = label
+    val o = JSONObject()
+    marks.forEach { (pos, name) -> o.put(pos.toString(), name) }
+    sp().edit().putString("audiobook_marks_$bookId", o.toString()).apply()
+}
+
+fun Context.removeAudioBookmark(bookId: String, positionMs: Long) {
+    val marks = getAudioBookmarks(bookId).toMutableMap()
+    marks.remove(positionMs)
+    val o = JSONObject()
+    marks.forEach { (pos, name) -> o.put(pos.toString(), name) }
+    sp().edit().putString("audiobook_marks_$bookId", o.toString()).apply()
+}

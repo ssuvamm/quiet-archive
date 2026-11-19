@@ -30,6 +30,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -57,12 +59,23 @@ import com.monochrome.annas.data.ReadingPosition
 import com.monochrome.annas.data.Reader
 import com.monochrome.annas.data.ReaderDocument
 import com.monochrome.annas.data.ReaderPage
+import com.monochrome.annas.data.ReaderStyle
+import com.monochrome.annas.data.getReaderBookmarks
+import com.monochrome.annas.data.getReaderBrightness
+import com.monochrome.annas.data.getReaderFontFamily
 import com.monochrome.annas.data.getReaderFontSize
+import com.monochrome.annas.data.getReaderLineHeight
+import com.monochrome.annas.data.getReaderMargin
 import com.monochrome.annas.data.getReaderTheme
 import com.monochrome.annas.data.getReadingPosition
+import com.monochrome.annas.data.setReaderBrightness
+import com.monochrome.annas.data.setReaderFontFamily
 import com.monochrome.annas.data.setReaderFontSize
+import com.monochrome.annas.data.setReaderLineHeight
+import com.monochrome.annas.data.setReaderMargin
 import com.monochrome.annas.data.setReaderTheme
 import com.monochrome.annas.data.setReadingPosition
+import com.monochrome.annas.data.toggleReaderBookmark
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -70,6 +83,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 /** Colours used by the reader chrome, matching the page theme passed to the WebView. */
 private data class ReaderColors(val background: Color, val foreground: Color, val muted: Color, val accent: Color)
@@ -99,6 +113,12 @@ private fun EbookReaderScreen(item: LibraryItem, onBack: () -> Unit) {
     var turning by remember { mutableStateOf(true) }
     var fontSize by remember { mutableStateOf(context.getReaderFontSize()) }
     var theme by remember { mutableStateOf(context.getReaderTheme()) }
+    var lineHeight by remember { mutableStateOf(context.getReaderLineHeight()) }
+    var fontFamily by remember { mutableStateOf(context.getReaderFontFamily()) }
+    var margin by remember { mutableStateOf(context.getReaderMargin()) }
+    var brightness by remember { mutableStateOf(context.getReaderBrightness()) }
+    var readerMarks by remember(item.id) { mutableStateOf(context.getReaderBookmarks(item.id)) }
+    val style = ReaderStyle(fontSize, theme, lineHeight, fontFamily, margin)
     var tocOpen by remember { mutableStateOf(false) }
     var settingsOpen by remember { mutableStateOf(false) }
     var exporting by remember { mutableStateOf(false) }
@@ -153,15 +173,15 @@ private fun EbookReaderScreen(item: LibraryItem, onBack: () -> Unit) {
             val opened = Reader.open(context, item)
             doc = opened
             chapter = chapter.coerceIn(0, (opened.chapters.size - 1).coerceAtLeast(0))
-        } catch (e: Exception) {
-            loadError = e.message ?: "Could not open this book."
+        } catch (t: Throwable) {
+            loadError = t.message ?: "Could not open this book."
         }
     }
 
-    LaunchedEffect(doc, chapter, fontSize, theme) {
+    LaunchedEffect(doc, chapter, style) {
         val d = doc ?: return@LaunchedEffect
         turning = true
-        page = runCatching { d.chapterPage(chapter, fontSize, theme) }.getOrNull()
+        page = runCatching { d.chapterPage(chapter, style) }.getOrNull()
         turning = false
         if (speakOnLoad && listening) {
             speakOnLoad = false
@@ -269,6 +289,13 @@ private fun EbookReaderScreen(item: LibraryItem, onBack: () -> Unit) {
                 }
                 else -> AndroidView(factory = { webView }, modifier = Modifier.fillMaxSize())
             }
+            if (brightness < 0.99f) {
+                Box(
+                    Modifier.fillMaxSize().background(
+                        Color.Black.copy(alpha = (1f - brightness).coerceIn(0f, 0.75f)),
+                    ),
+                )
+            }
             if (turning && doc != null) ProgressLine(Modifier.align(Alignment.TopCenter))
             if (exporting) {
                 Row(
@@ -299,13 +326,32 @@ private fun EbookReaderScreen(item: LibraryItem, onBack: () -> Unit) {
                     fraction = 0f
                 }
             }
+            val lastChapter = (chapters.size - 1).coerceAtLeast(0)
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                 MonoLabel(
-                    "${chapter + 1} / ${chapters.size.coerceAtLeast(1)}",
+                    "${chapter + 1} / ${chapters.size.coerceAtLeast(1)}${if (chapter in readerMarks) "  ★" else ""}",
                     color = colors.muted,
                 )
-                Spacer(Modifier.height(4.dp))
-                ProgressLine(Modifier.width(90.dp))
+                Slider(
+                    value = chapter.coerceAtMost(lastChapter).toFloat(),
+                    onValueChange = { value ->
+                        val next = value.roundToInt().coerceIn(0, lastChapter)
+                        if (next != chapter) {
+                            listening = false
+                            runCatching { tts.stop() }
+                            chapter = next
+                            fraction = 0f
+                        }
+                    },
+                    valueRange = 0f..lastChapter.toFloat().coerceAtLeast(1f),
+                    steps = if (lastChapter > 1) lastChapter - 1 else 0,
+                    enabled = chapters.size > 1,
+                    colors = SliderDefaults.colors(
+                        thumbColor = colors.accent,
+                        activeTrackColor = colors.accent,
+                        inactiveTrackColor = colors.muted.copy(alpha = 0.4f),
+                    ),
+                )
             }
             ReaderAction("NEXT", colors, enabled = chapter < chapters.lastIndex) {
                 if (chapter < chapters.lastIndex) {
@@ -381,6 +427,48 @@ private fun EbookReaderScreen(item: LibraryItem, onBack: () -> Unit) {
                             }
                         }
                     }
+                    Spacer(Modifier.height(16.dp))
+                    MonoLabel("LINE SPACING")
+                    Slider(
+                        value = lineHeight,
+                        onValueChange = { value ->
+                            lineHeight = value.coerceIn(1.2f, 2.2f)
+                            context.setReaderLineHeight(lineHeight)
+                        },
+                        valueRange = 1.2f..2.2f,
+                    )
+                    MonoLabel("MARGINS")
+                    Slider(
+                        value = margin.toFloat(),
+                        onValueChange = { value ->
+                            margin = value.roundToInt().coerceIn(0, 36)
+                            context.setReaderMargin(margin)
+                        },
+                        valueRange = 0f..36f,
+                    )
+                    MonoLabel("BRIGHTNESS")
+                    Slider(
+                        value = brightness,
+                        onValueChange = { value ->
+                            brightness = value.coerceIn(0.25f, 1f)
+                            context.setReaderBrightness(brightness)
+                        },
+                        valueRange = 0.25f..1f,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip("SERIF", fontFamily == "serif") {
+                            fontFamily = "serif"
+                            context.setReaderFontFamily(fontFamily)
+                        }
+                        FilterChip("SANS", fontFamily == "sans") {
+                            fontFamily = "sans"
+                            context.setReaderFontFamily(fontFamily)
+                        }
+                        GhostButton(if (chapter in readerMarks) "★ CHAPTER" else "MARK CHAPTER", {
+                            readerMarks = context.toggleReaderBookmark(item.id, chapter)
+                        })
+                    }
                     Spacer(Modifier.height(18.dp))
                     MonoLabel("AUDIOBOOK")
                     Spacer(Modifier.height(6.dp))
@@ -398,7 +486,7 @@ private fun EbookReaderScreen(item: LibraryItem, onBack: () -> Unit) {
                         exportStatus = "Preparing audiobook…"
                         scope.launch {
                             try {
-                                val name = AudioExport.export(context, d, item.title) { c, total ->
+                                val name = AudioExport.export(context, d, item.title, item.id) { c, total ->
                                     exportStatus = "Speaking chapter $c / $total…"
                                 }
                                 Toast.makeText(context, "Saved to Downloads: $name", Toast.LENGTH_LONG).show()

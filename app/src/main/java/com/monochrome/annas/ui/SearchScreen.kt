@@ -1,6 +1,7 @@
 package com.monochrome.annas.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -48,6 +49,24 @@ fun SearchScreen(vm: AppViewModel, onOpenBook: (String, SearchResult?) -> Unit) 
         Text("Search the archive by title, author, or ISBN.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(16.dp))
         SearchField(value = vm.searchQuery, onValue = { vm.searchQuery = it }, onSearch = { vm.search() }, placeholder = "Title, author, ISBN…")
+        if (vm.searchHistory.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            MonoLabel("RECENT SEARCHES", modifier = Modifier.padding(bottom = 6.dp))
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                vm.searchHistory.forEach { recent ->
+                    Box(
+                        Modifier
+                            .border(1.dp, MaterialTheme.colorScheme.outline, androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+                            .clickable { vm.searchQuery = recent; vm.search() }
+                            .width(140.dp)
+                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                    ) {
+                        Text(recent, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                GhostButton("CLEAR", { vm.clearSearchHistory() })
+            }
+        }
         Spacer(Modifier.height(10.dp))
         FilterRow(vm)
         Spacer(Modifier.height(10.dp))

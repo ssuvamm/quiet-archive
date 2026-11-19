@@ -43,7 +43,12 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun LibraryScreen(vm: AppViewModel, onOpen: (LibraryItem) -> Unit, onOpenBook: (String) -> Unit) {
+fun LibraryScreen(
+    vm: AppViewModel,
+    onOpen: (LibraryItem) -> Unit,
+    onOpenBook: (String) -> Unit,
+    onListen: (LibraryItem) -> Unit,
+) {
     val context = LocalContext.current
     var tab by remember { mutableStateOf(0) } // 0 downloaded, 1 saved
     var query by remember { mutableStateOf("") }
@@ -52,6 +57,21 @@ fun LibraryScreen(vm: AppViewModel, onOpen: (LibraryItem) -> Unit, onOpenBook: (
     var sortOpen by remember { mutableStateOf(false) }
     var toDelete by remember { mutableStateOf<LibraryItem?>(null) }
     var toUnsave by remember { mutableStateOf<SavedBook?>(null) }
+    var audiobookItem by remember { mutableStateOf<LibraryItem?>(null) }
+    var audiobookStatus by remember { mutableStateOf("") }
+
+    fun startAudiobook(item: LibraryItem) {
+        audiobookItem = item
+        audiobookStatus = "Preparing…"
+        vm.audiobookify(item, { status -> audiobookStatus = status }) { err ->
+            audiobookItem = null
+            android.widget.Toast.makeText(
+                context,
+                err ?: "Audiobook saved next to the book",
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
 
     // Reactive: the bookmark set changes on the book page, and the library
     // changes when a download finishes.
@@ -131,7 +151,7 @@ fun LibraryScreen(vm: AppViewModel, onOpen: (LibraryItem) -> Unit, onOpenBook: (
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
                     items(dlSaved, key = { it.id }) { item ->
-                        LibraryRow(item, onOpen = { onOpen(item) }, onToggleRead = { vm.toggleRead(item) }, onDelete = { toDelete = item })
+                        LibraryRow(item, hasAudio = item.id in vm.audioLinks, onOpen = { onOpen(item) }, onToggleRead = { vm.toggleRead(item) }, onDelete = { toDelete = item }, onAudiobookify = { startAudiobook(item) }, onListen = { onListen(item) })
                         Hairline()
                     }
                     items(savedOnly, key = { "s" + it.id }) { s ->
@@ -144,7 +164,7 @@ fun LibraryScreen(vm: AppViewModel, onOpen: (LibraryItem) -> Unit, onOpenBook: (
         } else {
             LazyColumn(Modifier.fillMaxSize()) {
                 items(filtered, key = { it.id }) { item ->
-                    LibraryRow(item, onOpen = { onOpen(item) }, onToggleRead = { vm.toggleRead(item) }, onDelete = { toDelete = item })
+                    LibraryRow(item, hasAudio = item.id in vm.audioLinks, onOpen = { onOpen(item) }, onToggleRead = { vm.toggleRead(item) }, onDelete = { toDelete = item }, onAudiobookify = { startAudiobook(item) }, onListen = { onListen(item) })
                     Hairline()
                 }
                 item { Spacer(Modifier.height(24.dp)) }
@@ -168,6 +188,26 @@ fun LibraryScreen(vm: AppViewModel, onOpen: (LibraryItem) -> Unit, onOpenBook: (
             text = { Text("This removes the bookmark; the file stays in your library if downloaded.", style = MaterialTheme.typography.bodySmall) },
             confirmButton = { TextButton(onClick = { vm.saveBookmark(s.id); vm.pruneSaved(); toUnsave = null }) { Text("REMOVE", style = MaterialTheme.typography.labelLarge) } },
             dismissButton = { TextButton(onClick = { toUnsave = null }) { Text("CANCEL", style = MaterialTheme.typography.labelLarge) } },
+            containerColor = MaterialTheme.colorScheme.surface,
+        )
+    }
+    audiobookItem?.let { item ->
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Making audiobook", style = MaterialTheme.typography.titleMedium) },
+            text = {
+                Column {
+                    Text(item.title, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(10.dp))
+                    ProgressLine()
+                    Spacer(Modifier.height(8.dp))
+                    Text(audiobookStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(8.dp))
+                    Text("This uses your phone's text-to-speech engine and runs entirely offline.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = {},
+            dismissButton = {},
             containerColor = MaterialTheme.colorScheme.surface,
         )
     }
@@ -213,7 +253,16 @@ fun FilterChip(text: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun LibraryRow(item: LibraryItem, onOpen: () -> Unit, onToggleRead: () -> Unit, onDelete: () -> Unit) {    var menuOpen by remember { mutableStateOf(false) }
+private fun LibraryRow(
+    item: LibraryItem,
+    hasAudio: Boolean,
+    onOpen: () -> Unit,
+    onToggleRead: () -> Unit,
+    onDelete: () -> Unit,
+    onAudiobookify: () -> Unit,
+    onListen: () -> Unit,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().clickable { onOpen() }.padding(vertical = 12.dp), verticalAlignment = Alignment.Top) {
         CoverImage(item.cover, 48.dp, 72.dp)
         Spacer(Modifier.width(14.dp))
@@ -234,6 +283,10 @@ private fun LibraryRow(item: LibraryItem, onOpen: () -> Unit, onToggleRead: () -
         IconButton(onClick = { menuOpen = true }) { Icon(MonoIcons.More, contentDescription = "More", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
             DropdownMenuItem(text = { Text(if (item.read) "MARK UNREAD" else "MARK READ", style = MaterialTheme.typography.labelLarge) }, onClick = { onToggleRead(); menuOpen = false })
+            if (hasAudio) {
+                DropdownMenuItem(text = { Text("LISTEN", style = MaterialTheme.typography.labelLarge) }, onClick = { onListen(); menuOpen = false })
+            }
+            DropdownMenuItem(text = { Text("AUDIOBOOKIFY", style = MaterialTheme.typography.labelLarge) }, onClick = { onAudiobookify(); menuOpen = false })
             DropdownMenuItem(text = { Text("DELETE", style = MaterialTheme.typography.labelLarge) }, onClick = { onDelete(); menuOpen = false })
         }
     }

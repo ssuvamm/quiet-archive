@@ -46,7 +46,7 @@ sealed class Screen {
     data object Library : Screen()
     data object Settings : Screen()
     data class Reader(val item: LibraryItem) : Screen()
-    data class Audio(val item: LibraryItem) : Screen()
+    data class Audio(val item: LibraryItem, val uri: String? = null, val bookId: String? = null) : Screen()
 }
 
 @Composable
@@ -96,7 +96,7 @@ fun MainApp() {
     // Real back stack: every push remembers where it came from, so BACK never
     // skips screens. At the root it sends the app to the background instead of
     // finishing it, which is what the user expects from a reading app.
-    val stack = remember { androidx.compose.runtime.mutableStateListOf<Screen>(Screen.Search) }
+    val stack = remember { androidx.compose.runtime.mutableStateListOf<Screen>(Screen.Library) }
     val screen = stack.last()
     val downloads by Downloads.tasks.collectAsState()
     val savedEvents = Downloads.saved
@@ -120,6 +120,11 @@ fun MainApp() {
             Reader.isReadable(item) -> navigate(Screen.Reader(item))
             else -> com.monochrome.annas.util.openItem(context, item)
         }
+    }
+
+    fun openAudiobook(item: LibraryItem) {
+        val link = vm.audioLinks[item.id] ?: return
+        navigate(Screen.Audio(item, link, item.id))
     }
 
     BackHandler { back() }
@@ -156,15 +161,22 @@ fun MainApp() {
                         vm = vm,
                         onBack = { back() },
                         onOpenDownloaded = { item -> openItem(item) },
+                        onListen = { item -> openAudiobook(item) },
                     )
                     is Screen.Library -> LibraryScreen(
                         vm = vm,
                         onOpen = { item -> openItem(item) },
                         onOpenBook = { url -> navigate(Screen.Book(url, null)) },
+                        onListen = { item -> openAudiobook(item) },
                     )
                     is Screen.Settings -> SettingsScreen(vm = vm)
                     is Screen.Reader -> ReaderScreen(item = s.item, onBack = { back() })
-                    is Screen.Audio -> AudioScreen(item = s.item, onBack = { back() })
+                    is Screen.Audio -> AudioScreen(
+                        item = s.item,
+                        sourceUri = s.uri,
+                        bookId = s.bookId ?: s.item.id,
+                        onBack = { back() },
+                    )
                 }
             }
             if (!immersive) {

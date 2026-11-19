@@ -39,7 +39,14 @@ import com.monochrome.annas.ui.AppViewModel
 import com.monochrome.annas.util.openItem
 
 @Composable
-fun BookScreen(url: String, preview: SearchResult?, vm: AppViewModel, onBack: () -> Unit, onOpenDownloaded: (com.monochrome.annas.data.LibraryItem) -> Unit) {
+fun BookScreen(
+    url: String,
+    preview: SearchResult?,
+    vm: AppViewModel,
+    onBack: () -> Unit,
+    onOpenDownloaded: (com.monochrome.annas.data.LibraryItem) -> Unit,
+    onListen: (com.monochrome.annas.data.LibraryItem) -> Unit,
+) {
     val context = LocalContext.current
     LaunchedEffect(url) { vm.openBook(url, null) }
     val book = vm.book
@@ -63,7 +70,7 @@ fun BookScreen(url: String, preview: SearchResult?, vm: AppViewModel, onBack: ()
         } else if (vm.bookError != null && book == null) {
             Column(Modifier.fillMaxSize().padding(24.dp)) { ErrorBanner(vm.bookError!!, onRetry = { vm.openBook(url, null) }) }
         } else if (book != null) {
-            BookContent(book, vm, context, inLibrary, task, onOpenDownloaded)
+            BookContent(book, vm, context, inLibrary, task, onOpenDownloaded, onListen)
         }
     }
 }
@@ -76,8 +83,10 @@ private fun BookContent(
     inLibrary: com.monochrome.annas.data.LibraryItem?,
     task: com.monochrome.annas.data.DownloadProgress?,
     onOpenDownloaded: (com.monochrome.annas.data.LibraryItem) -> Unit,
+    onListen: (com.monochrome.annas.data.LibraryItem) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var audioStatus by remember { mutableStateOf<String?>(null) }
     val active = task != null && task.state in setOf("queued", "downloading", "waiting", "saving")
     val failed = task?.state == "error" && !task.error.isNullOrBlank()
     val percent = if (task != null && task.total > 0) (task.received * 100 / task.total).toInt() else 0
@@ -117,6 +126,30 @@ private fun BookContent(
                 }
             }, modifier = Modifier.weight(1f), enabled = !active, icon = if (inLibrary != null) MonoIcons.Open else MonoIcons.Download)
             GhostButton(if (saved) "SAVED" else "SAVE", { vm.saveBookmark(book.id, book) }, modifier = Modifier, selected = saved)
+        }
+        if (inLibrary != null) {
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                GhostButton(if (audioStatus != null) "CREATING…" else "AUDIOBOOKIFY", {
+                    if (audioStatus != null) return@GhostButton
+                    audioStatus = "Preparing…"
+                    vm.audiobookify(inLibrary, { status -> audioStatus = status }) { err ->
+                        audioStatus = null
+                        android.widget.Toast.makeText(
+                            context,
+                            err ?: "Audiobook saved next to the book",
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                })
+                if (book.id in vm.audioLinks) {
+                    GhostButton("LISTEN", { onListen(inLibrary) })
+                }
+            }
+            audioStatus?.let {
+                Spacer(Modifier.height(4.dp))
+                MonoLabel(it)
+            }
         }
         if (active) {
             Spacer(Modifier.height(8.dp))
