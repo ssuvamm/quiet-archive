@@ -13,6 +13,7 @@ object Native {
     external fun failSave(id: String, message: String)
     external fun library(): String
     external fun libraryItem(id: String): String
+    external fun importLibraryItem(json: String): String
     external fun setRead(id: String, read: Boolean): String
     external fun deleteItem(id: String): String
     external fun fetchBytes(url: String): ByteArray?

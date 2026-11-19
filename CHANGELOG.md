@@ -4,6 +4,24 @@ All notable changes to Quiet Archive are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [semantic versioning](https://semver.org/).
 
+## [1.5.0] - 2026-11-20
+
+### Added
+- Audiobook creation runs in a foreground service with a wake lock and a
+  STOP notification action; it survives backgrounding and screen-off.
+- Audiobook player now uses a shared foreground playback service with
+  MediaSession/lock-screen controls, background playback, 10/15/30-second
+  skips, ten speeds, sleep timer with "end of book", and bookmarks.
+- Audiobooks can be exported as smaller M4A (AAC) files as well as WAV.
+- Reader supports swipe chapters or swipe pages, optional tap zones, text
+  selection highlights with notes, and chapter bookmarks.
+- Search filters live in a bottom sheet; recent searches can be pinned or
+  removed individually.
+- Library backup export/import (JSON) for bookmarks, progress, settings and
+  the library index, plus a minimal OPDS catalog browser.
+- Wi-Fi-only downloads, a two-download cap with queueing, search result cache,
+  and optional local-only crash reports with a share action.
+
 ## [1.4.0] - 2026-11-20
 
 ### Added

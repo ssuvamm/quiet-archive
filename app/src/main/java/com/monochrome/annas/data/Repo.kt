@@ -12,6 +12,7 @@ object Repo {
 
     suspend fun library() = withContext(Dispatchers.IO) { Native.library() }
     suspend fun libraryItem(id: String) = withContext(Dispatchers.IO) { Native.libraryItem(id) }
+    suspend fun importLibraryItem(json: String) = withContext(Dispatchers.IO) { Native.importLibraryItem(json) }
     suspend fun setRead(id: String, read: Boolean) = withContext(Dispatchers.IO) { Native.setRead(id, read) }
     suspend fun deleteItem(id: String) = withContext(Dispatchers.IO) { Native.deleteItem(id) }
     suspend fun downloads() = withContext(Dispatchers.IO) { Native.downloads() }

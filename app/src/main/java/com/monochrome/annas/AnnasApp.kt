@@ -10,6 +10,7 @@ class AnnasApp : Application() {
         super.onCreate()
         Native.initCore(filesDir.absolutePath, cacheDir.absolutePath, getBaseUrl())
         ThemeController.init(this)
+        com.monochrome.annas.util.CrashLog.install(this)
     }
 }
 

@@ -40,6 +40,9 @@ import com.monochrome.annas.data.SearchResult
 import com.monochrome.annas.ui.theme.AnnasTheme
 import kotlinx.coroutines.flow.collectLatest
 
+/** The splash is a cold-start thing only; warm starts go straight to the library. */
+private object SplashState { var shown = false }
+
 sealed class Screen {
     data object Search : Screen()
     data class Book(val url: String, val preview: SearchResult?) : Screen()
@@ -47,6 +50,7 @@ sealed class Screen {
     data object Ebooks : Screen()
     data object AudioLibrary : Screen()
     data object Settings : Screen()
+    data class Opds(val url: String) : Screen()
     data class Reader(val item: LibraryItem) : Screen()
     data class Audio(val item: LibraryItem, val uri: String? = null, val bookId: String? = null) : Screen()
 }
@@ -66,10 +70,13 @@ fun AppRoot(onboarding: Boolean, onOnboarded: () -> Unit) {
         if (onboarding) {
             OnboardingScreen(onFinish = onOnboarded)
         } else {
-            var showSplash by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
+            var showSplash by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(!SplashState.shown) }
             androidx.compose.runtime.LaunchedEffect(Unit) {
-                kotlinx.coroutines.delay(1200)
-                showSplash = false
+                if (showSplash) {
+                    kotlinx.coroutines.delay(900)
+                    showSplash = false
+                }
+                SplashState.shown = true
             }
             if (showSplash) {
                 Splash()
@@ -185,7 +192,19 @@ fun MainApp() {
                         onOpenBook = { url -> navigate(Screen.Book(url, null)) },
                         onAudiobookify = { item -> vm.audiobookify(listOf(item)) },
                     )
-                    is Screen.Settings -> SettingsScreen(vm = vm)
+                    is Screen.Settings -> SettingsScreen(vm = vm, onOpenOpds = { url -> navigate(Screen.Opds(url)) })
+                    is Screen.Opds -> OpdsScreen(
+                        feedUrl = s.url,
+                        onBack = { back() },
+                        onOpen = { url ->
+                            try {
+                                context.startActivity(
+                                    android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                                )
+                            } catch (_: Exception) {}
+                        },
+                    )
                     is Screen.Reader -> ReaderScreen(
                         item = s.item,
                         vm = vm,

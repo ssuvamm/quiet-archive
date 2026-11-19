@@ -20,6 +20,10 @@ fun openItem(context: Context, item: LibraryItem) {
         }
         context.startActivity(Intent.createChooser(intent, "Open with"))
     } catch (e: Exception) {
-        Toast.makeText(context, "No app can open this file", Toast.LENGTH_SHORT).show()
+        Toast.makeText(
+            context,
+            "No app can open this file. Install an ebook reader (e.g. KOReader or Readest) for MOBI/AZW3 books.",
+            Toast.LENGTH_LONG,
+        ).show()
     }
 }

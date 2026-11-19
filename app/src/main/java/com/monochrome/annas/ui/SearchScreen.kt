@@ -25,7 +25,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -39,8 +42,10 @@ import androidx.compose.ui.unit.dp
 import com.monochrome.annas.data.SearchResult
 import com.monochrome.annas.ui.AppViewModel
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(vm: AppViewModel, onOpenBook: (String, SearchResult?) -> Unit) {
+    var filtersOpen by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(18.dp))
         MonoLabel("ANNA'S ARCHIVE")
@@ -54,21 +59,32 @@ fun SearchScreen(vm: AppViewModel, onOpenBook: (String, SearchResult?) -> Unit) 
             MonoLabel("RECENT SEARCHES", modifier = Modifier.padding(bottom = 6.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 vm.searchHistory.forEach { recent ->
-                    Box(
+                    Row(
                         Modifier
                             .border(1.dp, MaterialTheme.colorScheme.outline, androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
-                            .clickable { vm.searchQuery = recent; vm.search() }
-                            .width(140.dp)
-                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                            .padding(start = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(recent, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            if (recent in vm.pinnedSearches) "★ $recent" else recent,
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.width(120.dp).clickable { vm.searchQuery = recent; vm.search() }.padding(vertical = 8.dp),
+                        )
+                        IconButton(onClick = { vm.toggleSearchPin(recent) }) {
+                            Text("★", style = MaterialTheme.typography.labelSmall, color = if (recent in vm.pinnedSearches) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        IconButton(onClick = { vm.removeSearchHistory(recent) }) {
+                            Icon(MonoIcons.Close, contentDescription = "Remove", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
+                        }
                     }
                 }
                 GhostButton("CLEAR", { vm.clearSearchHistory() })
             }
         }
         Spacer(Modifier.height(10.dp))
-        FilterRow(vm)
+        GhostButton("FILTERS", { filtersOpen = true })
         Spacer(Modifier.height(10.dp))
         if (vm.searchLoading && vm.searchResults.isEmpty()) {
             ProgressLine()
@@ -103,6 +119,18 @@ fun SearchScreen(vm: AppViewModel, onOpenBook: (String, SearchResult?) -> Unit) 
                 if (vm.searchLoading) {
                     item { Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
                 }
+            }
+        }
+    }
+
+    if (filtersOpen) {
+        ModalBottomSheet(onDismissRequest = { filtersOpen = false }) {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
+                MonoLabel("SEARCH FILTERS")
+                Spacer(Modifier.height(12.dp))
+                FilterRow(vm)
+                Spacer(Modifier.height(20.dp))
+                GhostButton("DONE", { filtersOpen = false }, modifier = Modifier.fillMaxWidth())
             }
         }
     }

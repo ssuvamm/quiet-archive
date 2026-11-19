@@ -34,6 +34,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -59,10 +60,15 @@ import com.monochrome.annas.data.LibraryItem
 import com.monochrome.annas.data.ReadingPosition
 import com.monochrome.annas.data.Reader
 import com.monochrome.annas.data.ReaderDocument
+import com.monochrome.annas.data.ReaderHighlight
 import com.monochrome.annas.data.ReaderPage
 import com.monochrome.annas.data.ReaderStyle
+import com.monochrome.annas.data.addReaderHighlight
 import com.monochrome.annas.data.getReaderBookmarks
 import com.monochrome.annas.data.getReaderBrightness
+import com.monochrome.annas.data.getReaderHighlights
+import com.monochrome.annas.data.getReaderSwipeMode
+import com.monochrome.annas.data.getReaderTapZones
 import com.monochrome.annas.data.getReaderFontFamily
 import com.monochrome.annas.data.getReaderFontSize
 import com.monochrome.annas.data.getReaderLineHeight
@@ -75,7 +81,10 @@ import com.monochrome.annas.data.setReaderFontFamily
 import com.monochrome.annas.data.setReaderFontSize
 import com.monochrome.annas.data.setReaderLineHeight
 import com.monochrome.annas.data.setReaderMargin
+import com.monochrome.annas.data.setReaderSwipeMode
+import com.monochrome.annas.data.setReaderTapZones
 import com.monochrome.annas.data.setReaderTheme
+import com.monochrome.annas.data.removeReaderHighlight
 import com.monochrome.annas.data.setReadingPosition
 import com.monochrome.annas.data.toggleReaderBookmark
 import kotlinx.coroutines.Dispatchers
@@ -120,6 +129,11 @@ private fun EbookReaderScreen(item: LibraryItem, vm: AppViewModel, onListen: () 
     var margin by remember { mutableStateOf(context.getReaderMargin()) }
     var brightness by remember { mutableStateOf(context.getReaderBrightness()) }
     var readerMarks by remember(item.id) { mutableStateOf(context.getReaderBookmarks(item.id)) }
+    var highlights by remember(item.id) { mutableStateOf(context.getReaderHighlights(item.id)) }
+    var swipeMode by remember { mutableStateOf(context.getReaderSwipeMode()) }
+    var tapZones by remember { mutableStateOf(context.getReaderTapZones()) }
+    var pendingSelection by remember { mutableStateOf<String?>(null) }
+    var highlightNote by remember { mutableStateOf("") }
     var listenPrompt by remember { mutableStateOf(false) }
     val style = ReaderStyle(fontSize, theme, lineHeight, fontFamily, margin)
     var tocOpen by remember { mutableStateOf(false) }
@@ -216,8 +230,10 @@ private fun EbookReaderScreen(item: LibraryItem, vm: AppViewModel, onListen: () 
             fraction = 0f
         }
     }
+    val pageModeNow by rememberUpdatedState(swipeMode == "pages")
+    val tapZonesNow by rememberUpdatedState(tapZones)
     val webView = remember {
-        SwipeWebView(context, { swipeChapter(1) }, { swipeChapter(-1) }).apply {
+        SwipeWebView(context, { delta -> swipeChapter(delta) }, { pageModeNow }, { tapZonesNow }).apply {
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             settings.javaScriptEnabled = true
             settings.allowFileAccess = true
@@ -282,6 +298,21 @@ private fun EbookReaderScreen(item: LibraryItem, vm: AppViewModel, onListen: () 
                 if (item.id in vm.audioLinks) onListen() else listenPrompt = true
             }
             ReaderAction("TOC", colors) { tocOpen = true }
+            ReaderAction("MARK", colors) {
+                runCatching {
+                    webView.evaluateJavascript("window.getSelection().toString()") { raw ->
+                        val selected = runCatching {
+                            org.json.JSONTokener(raw ?: "null").nextValue().toString()
+                        }.getOrNull().orEmpty()
+                        if (selected.isBlank()) {
+                            Toast.makeText(context, "Select some text first, then tap MARK", Toast.LENGTH_SHORT).show()
+                        } else {
+                            pendingSelection = selected.take(500)
+                            highlightNote = ""
+                        }
+                    }
+                }
+            }
         }
         Hairline(color = colors.muted.copy(alpha = 0.25f))
 
@@ -370,6 +401,36 @@ private fun EbookReaderScreen(item: LibraryItem, vm: AppViewModel, onListen: () 
                 }
             }
         }
+    }
+
+    pendingSelection?.let { selected ->
+        AlertDialog(
+            onDismissRequest = { pendingSelection = null },
+            title = { Text("Save highlight", style = MaterialTheme.typography.titleMedium) },
+            text = {
+                Column {
+                    Text(selected, style = MaterialTheme.typography.bodySmall, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.height(10.dp))
+                    TextField(
+                        value = highlightNote,
+                        onValueChange = { highlightNote = it },
+                        placeholder = { Text("Note (optional)") },
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    context.addReaderHighlight(item.id, ReaderHighlight(chapter, selected, highlightNote.trim()))
+                    highlights = context.getReaderHighlights(item.id)
+                    pendingSelection = null
+                }) { Text("SAVE", style = MaterialTheme.typography.labelLarge) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingSelection = null }) { Text("CANCEL", style = MaterialTheme.typography.labelLarge) }
+            },
+            containerColor = MaterialTheme.colorScheme.surface,
+        )
     }
 
     if (listenPrompt) {
@@ -512,6 +573,39 @@ private fun EbookReaderScreen(item: LibraryItem, vm: AppViewModel, onListen: () 
                             readerMarks = context.toggleReaderBookmark(item.id, chapter)
                         })
                     }
+                    Spacer(Modifier.height(12.dp))
+                    MonoLabel("SWIPE ACTION")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip("CHAPTERS", swipeMode == "chapters") {
+                            swipeMode = "chapters"
+                            context.setReaderSwipeMode(swipeMode)
+                        }
+                        FilterChip("PAGES", swipeMode == "pages") {
+                            swipeMode = "pages"
+                            context.setReaderSwipeMode(swipeMode)
+                        }
+                        FilterChip("TAP ZONES", tapZones) {
+                            tapZones = !tapZones
+                            context.setReaderTapZones(tapZones)
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    MonoLabel("HIGHLIGHTS (${highlights.size})")
+                    highlights.take(8).forEachIndexed { index, h ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "Ch. ${h.chapter + 1}: ${h.text.take(60)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = {
+                                context.removeReaderHighlight(item.id, index)
+                                highlights = context.getReaderHighlights(item.id)
+                            }) { Text("REMOVE") }
+                        }
+                    }
                     Spacer(Modifier.height(18.dp))
                     MonoLabel("AUDIOBOOK")
                     Spacer(Modifier.height(6.dp))
@@ -580,8 +674,9 @@ private class ReaderBridge(private val onFraction: (Float) -> Unit) {
 /** WebView that turns chapters on a horizontal swipe while leaving vertical scroll alone. */
 private class SwipeWebView(
     context: android.content.Context,
-    private val onNext: () -> Unit,
-    private val onPrevious: () -> Unit,
+    private val onChapter: (Int) -> Unit,
+    private val pageMode: () -> Boolean,
+    private val tapZones: () -> Boolean,
 ) : WebView(context) {
     private var downX = 0f
     private var downY = 0f
@@ -597,7 +692,20 @@ private class SwipeWebView(
                 val dx = event.x - downX
                 val dy = event.y - downY
                 if (kotlin.math.abs(dx) > 90 && kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.5f) {
-                    if (dx < 0) onNext() else onPrevious()
+                    if (pageMode()) {
+                        val amount = if (dx < 0) 0.85 else -0.85
+                        runCatching {
+                            evaluateJavascript("window.scrollBy(0, (window.innerHeight||600)*$amount);", null)
+                        }
+                    } else {
+                        onChapter(if (dx < 0) 1 else -1)
+                    }
+                } else if (tapZones() && kotlin.math.abs(dx) < 20 && kotlin.math.abs(dy) < 20) {
+                    val third = width / 3f
+                    when {
+                        event.x < third -> onChapter(-1)
+                        event.x > third * 2 -> onChapter(1)
+                    }
                 }
             }
         }

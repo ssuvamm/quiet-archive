@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -76,7 +77,7 @@ private fun DonateRow(title: String, id: String, url: String) {
 }
 
 @Composable
-fun SettingsScreen(vm: AppViewModel) {
+fun SettingsScreen(vm: AppViewModel, onOpenOpds: (String) -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var theme by remember { mutableStateOf(context.getThemeMode()) }
@@ -87,6 +88,34 @@ fun SettingsScreen(vm: AppViewModel) {
     var stats by remember { mutableStateOf("") }
     var ttsEngine by remember { mutableStateOf(context.getTtsEngine()) }
     var enginePicker by remember { mutableStateOf(false) }
+    var wifiOnly by remember { mutableStateOf(context.getWifiOnly()) }
+    var audioFormat by remember { mutableStateOf(context.getAudioFormat()) }
+    var backupStatus by remember { mutableStateOf("") }
+    var opdsOpen by remember { mutableStateOf(false) }
+    var opdsUrl by remember { mutableStateOf("") }
+    var crashOptIn by remember { mutableStateOf(context.getSharedPreferences("annas", Context.MODE_PRIVATE).getBoolean("crash_reporting", false)) }
+    val backupExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) {
+            scope.launch {
+                backupStatus = try {
+                    val count = Backup.export(context, uri)
+                    "Exported $count books"
+                } catch (e: Exception) { "Export failed: ${e.message}" }
+            }
+        }
+    }
+    val backupImport = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                backupStatus = try {
+                    val count = Backup.import(context, uri)
+                    vm.refreshLibrary()
+                    vm.refreshAudioLinks()
+                    "Restored $count books"
+                } catch (e: Exception) { "Import failed: ${e.message}" }
+            }
+        }
+    }
     val ttsEngines = remember {
         val pm = context.packageManager
         val intent = Intent(android.speech.tts.TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE)
@@ -144,6 +173,15 @@ val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.Ope
             GhostButton("Use app storage", onClick = { context.setFolderUri(null); folder = null })
         }
         GhostButton("Clear download cache", onClick = { try { context.cacheDir.resolve("downloads").deleteRecursively() } catch (_: Exception) {} }, modifier = Modifier.padding(top = 8.dp))
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Download on Wi-Fi only", style = MaterialTheme.typography.titleSmall)
+                MonoLabel("Other downloads wait until Wi-Fi is available")
+            }
+            FilterChip("ON", wifiOnly) { wifiOnly = true; context.setWifiOnly(true) }
+            Spacer(Modifier.width(6.dp))
+            FilterChip("OFF", !wifiOnly) { wifiOnly = false; context.setWifiOnly(false) }
+        }
 
         SectionHeader("VOICES FOR AUDIOBOOKS")
         Text(
@@ -176,6 +214,18 @@ val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.Ope
             { enginePicker = true },
             modifier = Modifier.fillMaxWidth(),
         )
+        Spacer(Modifier.height(8.dp))
+        MonoLabel("AUDIOBOOK FILE FORMAT")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip("M4A (SMALLER)", audioFormat == "m4a") {
+                audioFormat = "m4a"
+                context.setAudioFormat("m4a")
+            }
+            FilterChip("WAV", audioFormat == "wav") {
+                audioFormat = "wav"
+                context.setAudioFormat("wav")
+            }
+        }
         Hairline()
 
         if (enginePicker) {
@@ -228,6 +278,29 @@ val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.Ope
             scope.launch { runCatching { WebFetch.warmup(v) } }
         })
 
+        SectionHeader("LIBRARY BACKUP")
+        Text(
+            "Save your bookmark list, reading positions, audiobook links, preferences and library index to a JSON file. Book files stay on your device.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GhostButton("EXPORT", { backupExport.launch("quiet-archive-backup.json") })
+            GhostButton("IMPORT", { backupImport.launch(arrayOf("application/json", "*/*")) })
+        }
+        if (backupStatus.isNotBlank()) {
+            Spacer(Modifier.height(6.dp))
+            MonoLabel(backupStatus)
+        }
+        Hairline()
+
+        SectionHeader("CATALOGS")
+        Text("Browse a Calibre or other OPDS catalog by its feed URL.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(8.dp))
+        GhostButton("BROWSE OPDS CATALOG", { opdsOpen = true }, modifier = Modifier.fillMaxWidth())
+        Hairline()
+
         SectionHeader("ACCOUNT")
         Text("Anna's Archive membership unlocks fast downloads and raises search limits. Sign in on the site in a secure in-app browser; this app reuses that session.", style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(8.dp))
@@ -267,6 +340,24 @@ val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.Ope
             } catch (_: Exception) { stats = "unavailable" }
         })
         if (stats.isNotBlank()) MonoLabel(stats, modifier = Modifier.padding(top = 6.dp))
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Save crash reports on device", style = MaterialTheme.typography.titleSmall)
+                MonoLabel("Only stored locally; nothing is uploaded")
+            }
+            FilterChip("ON", crashOptIn) {
+                crashOptIn = true
+                context.getSharedPreferences("annas", Context.MODE_PRIVATE).edit().putBoolean("crash_reporting", true).apply()
+            }
+            Spacer(Modifier.width(6.dp))
+            FilterChip("OFF", !crashOptIn) {
+                crashOptIn = false
+                context.getSharedPreferences("annas", Context.MODE_PRIVATE).edit().putBoolean("crash_reporting", false).apply()
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        GhostButton("SHARE LAST CRASH REPORT", { com.monochrome.annas.util.CrashLog.share(context) }, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(24.dp))
     }
 
@@ -285,6 +376,34 @@ val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.Ope
                 } catch (e: Exception) { e.message ?: "Sync failed" }
             }
         })
+    }
+
+    if (opdsOpen) {
+        AlertDialog(
+            onDismissRequest = { opdsOpen = false },
+            title = { Text("OPDS catalog", style = MaterialTheme.typography.titleMedium) },
+            text = {
+                Column {
+                    Text("Enter the full feed URL, e.g. http://192.168.1.10:8080/opds", style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(8.dp))
+                    androidx.compose.material3.TextField(
+                        value = opdsUrl,
+                        onValueChange = { opdsUrl = it },
+                        singleLine = true,
+                        placeholder = { Text("http://…/opds") },
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val url = opdsUrl.trim()
+                    opdsOpen = false
+                    if (url.isNotBlank()) onOpenOpds(url)
+                }) { Text("OPEN") }
+            },
+            dismissButton = { TextButton(onClick = { opdsOpen = false }) { Text("CANCEL") } },
+            containerColor = MaterialTheme.colorScheme.surface,
+        )
     }
 }
 

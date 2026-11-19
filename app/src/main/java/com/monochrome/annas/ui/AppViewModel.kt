@@ -58,6 +58,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     var searchHistory by mutableStateOf(context.getSearchHistory())
         private set
+    var pinnedSearches by mutableStateOf(context.getPinnedSearches())
+        private set
+
+    private fun refreshHistory() {
+        val pins = context.getPinnedSearches()
+        pinnedSearches = pins
+        val all = context.getSearchHistory()
+        searchHistory = all.sortedByDescending { it in pins }
+    }
 
     var searchLoading by mutableStateOf(false)
     var searchError by mutableStateOf<String?>(null)
@@ -129,12 +138,44 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private fun searchCacheKey(): String = listOf(
+        searchQuery.trim().lowercase(), searchExt, searchLang, searchSort, searchPage.toString(),
+    ).joinToString("|").hashCode().toString()
+
+    private fun cachedSearch(): org.json.JSONObject? {
+        val file = java.io.File(context.cacheDir, "search/${searchCacheKey()}.json")
+        if (!file.isFile || System.currentTimeMillis() - file.lastModified() > 30 * 60_000L) return null
+        return try { org.json.JSONObject(file.readText()) } catch (_: Exception) { null }
+    }
+
+    private fun saveSearchCache(json: org.json.JSONObject) {
+        try {
+            val dir = java.io.File(context.cacheDir, "search").apply { mkdirs() }
+            dir.listFiles()?.filter {
+                System.currentTimeMillis() - it.lastModified() > 24 * 60 * 60_000L
+            }?.forEach { it.delete() }
+            java.io.File(dir, "${searchCacheKey()}.json").writeText(json.toString())
+        } catch (_: Exception) {}
+    }
+
     fun search(reset: Boolean = true) {
         if (searchQuery.isNotBlank()) {
             context.addSearchHistory(searchQuery)
-            searchHistory = context.getSearchHistory()
+            refreshHistory()
         }
         if (reset) { searchPage = 1; searchResults = emptyList(); searchExhausted = false }
+        // Instant results from a recent search, refreshed at most every 30 min.
+        cachedSearch()?.let { cached ->
+            val hits = parseSearchResults(cached.optJSONArray("results")?.toString() ?: "[]")
+            if (hits.isNotEmpty()) {
+                searchResults = if (reset) hits else (searchResults + hits).distinctBy { it.id }
+                searchHasMore = cached.optBoolean("has_more", false)
+                searchExhausted = hits.isEmpty() && !searchHasMore
+                searchTook = cached.optLong("took_ms", 0)
+                searchLoading = false
+                return
+            }
+        }
         searchLoading = true
         searchError = null
         viewModelScope.launch {
@@ -185,6 +226,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
                 if (obj != null) {
+                    saveSearchCache(obj)
                     val results = parseSearchResults(obj.optJSONArray("results")?.toString() ?: "[]")
                     searchResults = if (reset) results else (searchResults + results).distinctBy { it.id }
                     searchHasMore = obj.optBoolean("has_more", false)
@@ -209,7 +251,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearSearchHistory() {
         context.clearSearchHistory()
-        searchHistory = emptyList()
+        refreshHistory()
+    }
+
+    fun removeSearchHistory(query: String) {
+        context.removeSearchHistory(query)
+        refreshHistory()
+    }
+
+    fun toggleSearchPin(query: String) {
+        context.toggleSearchPin(query)
+        refreshHistory()
     }
 
     fun loadMore() {
@@ -333,7 +385,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             bookUrl = book.sourceUrl,
             replace = replace,
         )
-        com.monochrome.annas.data.Downloads.prepareAndStart(context, req, candidates.drop(1))
+        com.monochrome.annas.data.Downloads.enqueue(context, req, candidates.drop(1))
     }
 
     var audioLinks by mutableStateOf(context.getAudiobookLinks())
@@ -343,44 +395,67 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var audiobookProgress by mutableStateOf("")
         private set
     private var audiobookJob: Job? = null
+    private var stopCollector: Job? = null
+
+    fun refreshAudioLinks() {
+        audioLinks = context.getAudiobookLinks()
+        refreshSaved(force = true)
+    }
 
     /** Create audiobooks for one or more books; the whole queue can be stopped. */
     fun audiobookify(items: List<LibraryItem>) {
         if (audiobookJob?.isActive == true || items.isEmpty()) return
+        val wakeLock = runCatching {
+            (context.getSystemService(android.os.PowerManager::class.java))
+                ?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "quietarchive:audiobook")
+                ?.apply { acquire(6 * 60 * 60 * 1000L) }
+        }.getOrNull()
+        if (stopCollector?.isActive != true) {
+            stopCollector = viewModelScope.launch {
+                AudiobookExportController.stop.collect { cancelAudiobookify() }
+            }
+        }
+        AudiobookExportController.update(true, "Preparing…", "")
+        com.monochrome.annas.AudiobookExportService.start(context)
         audiobookJob = viewModelScope.launch {
             var completed = 0
-            items.forEachIndexed { index, item ->
-                audiobookProgress = "${index + 1} / ${items.size}"
-                audiobookStatus = item.title
-                try {
-                    val doc = Reader.open(context, item)
-                    AudioExport.export(context, doc, item.title, item.id) { chapter, total ->
-                        audiobookStatus = "${item.title} · chapter $chapter / $total"
+            try {
+                items.forEachIndexed { index, item ->
+                    audiobookProgress = "${index + 1} / ${items.size}"
+                    audiobookStatus = item.title
+                    AudiobookExportController.update(true, item.title, audiobookProgress)
+                    try {
+                        val doc = Reader.open(context, item)
+                        AudioExport.export(context, doc, item.title, item.id) { chapter, total ->
+                            val status = "chapter $chapter / $total"
+                            audiobookStatus = "${item.title} · $status"
+                            AudiobookExportController.update(true, item.title, audiobookProgress + " · " + status)
+                        }
+                        completed++
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        android.widget.Toast.makeText(
+                            context,
+                            "${item.title}: ${e.message ?: "Could not create the audiobook"}",
+                            android.widget.Toast.LENGTH_LONG,
+                        ).show()
                     }
-                    completed++
-                } catch (e: CancellationException) {
-                    audiobookStatus = null
-                    audiobookProgress = ""
-                    audiobookJob = null
-                    throw e
-                } catch (e: Exception) {
+                }
+            } finally {
+                audiobookStatus = null
+                audiobookProgress = ""
+                AudiobookExportController.update(false)
+                wakeLock?.let { runCatching { if (it.isHeld) it.release() } }
+                audioLinks = context.getAudiobookLinks()
+                audiobookJob = null
+                if (completed > 0) {
                     android.widget.Toast.makeText(
                         context,
-                        "${item.title}: ${e.message ?: "Could not create the audiobook"}",
-                        android.widget.Toast.LENGTH_LONG,
+                        "$completed audiobook${if (completed == 1) "" else "s"} saved",
+                        android.widget.Toast.LENGTH_SHORT,
                     ).show()
                 }
-            }
-            audiobookStatus = null
-            audiobookProgress = ""
-            audioLinks = context.getAudiobookLinks()
-            audiobookJob = null
-            if (completed > 0) {
-                android.widget.Toast.makeText(
-                    context,
-                    "$completed audiobook${if (completed == 1) "" else "s"} saved",
-                    android.widget.Toast.LENGTH_SHORT,
-                ).show()
             }
         }
     }
@@ -391,6 +466,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         audiobookJob = null
         audiobookStatus = null
         audiobookProgress = ""
+        AudiobookExportController.update(false)
     }
 
     var hasDownloadsFilter by mutableStateOf(false)

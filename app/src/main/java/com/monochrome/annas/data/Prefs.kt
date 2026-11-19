@@ -153,6 +153,45 @@ fun Context.setReaderMargin(v: Int) { sp().edit().putInt("reader_margin", v).app
 fun Context.getReaderBrightness(): Float = sp().getFloat("reader_brightness", 1f)
 fun Context.setReaderBrightness(v: Float) { sp().edit().putFloat("reader_brightness", v).apply() }
 
+fun Context.getReaderSwipeMode(): String = sp().getString("reader_swipe", "chapters") ?: "chapters"
+fun Context.setReaderSwipeMode(v: String) { sp().edit().putString("reader_swipe", v).apply() }
+
+fun Context.getReaderTapZones(): Boolean = sp().getBoolean("reader_tap_zones", false)
+fun Context.setReaderTapZones(v: Boolean) { sp().edit().putBoolean("reader_tap_zones", v).apply() }
+
+data class ReaderHighlight(val chapter: Int, val text: String, val note: String)
+
+fun Context.getReaderHighlights(bookId: String): List<ReaderHighlight> {
+    val raw = sp().getString("reader_highlights_$bookId", "[]") ?: "[]"
+    return try {
+        val arr = JSONArray(raw)
+        (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            ReaderHighlight(o.optInt("chapter", 0), o.optString("text"), o.optString("note"))
+        }
+    } catch (_: Exception) { emptyList() }
+}
+
+fun Context.addReaderHighlight(bookId: String, highlight: ReaderHighlight) {
+    val list = getReaderHighlights(bookId).toMutableList()
+    list.add(highlight)
+    val arr = JSONArray()
+    list.forEach { h ->
+        arr.put(JSONObject().put("chapter", h.chapter).put("text", h.text).put("note", h.note))
+    }
+    sp().edit().putString("reader_highlights_$bookId", arr.toString()).apply()
+}
+
+fun Context.removeReaderHighlight(bookId: String, index: Int) {
+    val list = getReaderHighlights(bookId).toMutableList()
+    if (index in list.indices) list.removeAt(index)
+    val arr = JSONArray()
+    list.forEach { h ->
+        arr.put(JSONObject().put("chapter", h.chapter).put("text", h.text).put("note", h.note))
+    }
+    sp().edit().putString("reader_highlights_$bookId", arr.toString()).apply()
+}
+
 fun Context.getReaderBookmarks(id: String): Set<Int> {
     val raw = sp().getString("reader_marks_$id", "") ?: ""
     return raw.split(',').mapNotNull { it.toIntOrNull() }.toSet()
@@ -195,6 +234,33 @@ fun Context.clearSearchHistory() {
     sp().edit().putString("search_history", "[]").apply()
 }
 
+fun Context.getPinnedSearches(): Set<String> {
+    val raw = sp().getString("search_pins", "[]") ?: "[]"
+    return try {
+        val a = JSONArray(raw)
+        (0 until a.length()).map { a.getString(it) }.toSet()
+    } catch (_: Exception) { emptySet() }
+}
+
+fun Context.toggleSearchPin(query: String) {
+    val pins = getPinnedSearches().toMutableSet()
+    if (!pins.add(query)) pins.remove(query)
+    sp().edit().putString("search_pins", JSONArray(pins).toString()).apply()
+}
+
+fun Context.removeSearchHistory(query: String) {
+    val list = getSearchHistory().filter { !it.equals(query, true) }
+    sp().edit().putString("search_history", JSONArray(list).toString()).apply()
+}
+
+// ---- Downloads ----------------------------------------------------------
+
+fun Context.getWifiOnly(): Boolean = sp().getBoolean("wifi_only", false)
+fun Context.setWifiOnly(v: Boolean) { sp().edit().putBoolean("wifi_only", v).apply() }
+
+fun Context.getAudioFormat(): String = sp().getString("audio_format", "m4a") ?: "m4a"
+fun Context.setAudioFormat(v: String) { sp().edit().putString("audio_format", v).apply() }
+
 // ---- Text-to-speech -----------------------------------------------------
 
 /** Package name of the chosen TTS engine, or null for the system default. */
@@ -232,7 +298,7 @@ fun Context.getAudioBookmarks(bookId: String): Map<Long, String> {
         (0 until o.length()).associate { i ->
             val key = o.names()?.getString(i) ?: return@associate 0L to ""
             key.toLongOrNull()?.let { it to o.optString(key) } ?: (0L to "")
-        }.filter { it.key > 0 }
+        }.filter { it.value.isNotBlank() }
     } catch (_: Exception) { emptyMap() }
 }
 

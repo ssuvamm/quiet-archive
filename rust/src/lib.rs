@@ -704,6 +704,29 @@ pub extern "system" fn Java_com_monochrome_annas_Native_libraryItem(
     return_string(&mut env, payload)
 }
 
+/// Restore one library item from a backup file.
+#[no_mangle]
+pub extern "system" fn Java_com_monochrome_annas_Native_importLibraryItem(
+    mut env: JNIEnv,
+    _this: JObject,
+    json: JString,
+) -> jstring {
+    let raw = read_string(&mut env, &json);
+    let item: LibraryItem = match serde_json::from_str(&raw) {
+        Ok(item) => item,
+        Err(e) => return return_string(&mut env, json_error(format!("Bad library item: {}", e))),
+    };
+    let saved = state()
+        .and_then(|s| s.library.lock().ok().and_then(|mut lib| lib.upsert(item).ok()));
+    let response = OkResponse {
+        ok: saved.is_some(),
+        error: if saved.is_some() { None } else { Some("Could not write library".into()) },
+        item: saved,
+    };
+    let payload = serde_json::to_string(&response).unwrap_or_else(|_| json_error("Could not write library"));
+    return_string(&mut env, payload)
+}
+
 #[no_mangle]
 pub extern "system" fn Java_com_monochrome_annas_Native_setRead(
     mut env: JNIEnv,

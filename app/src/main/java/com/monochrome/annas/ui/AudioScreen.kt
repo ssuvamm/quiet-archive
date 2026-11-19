@@ -1,7 +1,5 @@
 package com.monochrome.annas.ui
 
-import android.media.MediaPlayer
-import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -21,7 +19,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,23 +29,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.monochrome.annas.AudioPlayerService
+import com.monochrome.annas.data.AudioController
 import com.monochrome.annas.data.LibraryItem
 import com.monochrome.annas.data.addAudioBookmark
 import com.monochrome.annas.data.getAudioBookmarks
 import com.monochrome.annas.data.getAudioPosition
-import com.monochrome.annas.data.getAudioSpeed
 import com.monochrome.annas.data.removeAudioBookmark
-import com.monochrome.annas.data.setAudioPosition
-import com.monochrome.annas.data.setAudioSpeed
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 private val SPEEDS = listOf(0.75f, 0.8f, 1.0f, 1.1f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f)
 
-/**
- * Audiobook player: remembers where you stopped, skips by 10/15/30 seconds,
- * keeps speed and sleep timer settings, and lets you bookmark passages.
- */
+/** Control surface for the shared audiobook player (notification works in background). */
 @Composable
 fun AudioScreen(
     item: LibraryItem,
@@ -56,108 +50,34 @@ fun AudioScreen(
     onBack: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var prepared by remember { mutableStateOf(false) }
-    var playing by remember { mutableStateOf(false) }
-    var duration by remember { mutableStateOf(0) }
-    var position by remember { mutableStateOf(0) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var speed by remember(bookId) { mutableStateOf(context.getAudioSpeed()) }
+    val playing by AudioController.playing.collectAsState()
+    val position by AudioController.position.collectAsState()
+    val duration by AudioController.duration.collectAsState()
+    val speed by AudioController.speed.collectAsState()
+    val sleepUntil by AudioController.sleepUntil.collectAsState()
     var speedOpen by remember { mutableStateOf(false) }
     var sleepOpen by remember { mutableStateOf(false) }
     var marksOpen by remember { mutableStateOf(false) }
     var bookmarks by remember(bookId) { mutableStateOf(context.getAudioBookmarks(bookId)) }
-    var sleepAt by remember { mutableStateOf(0L) }
-    var sleepLeft by remember { mutableStateOf("") }
-
-    val player = remember { MediaPlayer() }
-
-    fun seekTo(ms: Int) {
-        val target = ms.coerceIn(0, duration.coerceAtLeast(0))
-        if (prepared) runCatching { player.seekTo(target) }
-        position = target
-    }
-
-    fun applySpeed(value: Float) {
-        speed = value
-        context.setAudioSpeed(value)
-        if (prepared) runCatching { player.playbackParams = player.playbackParams.setSpeed(value) }
-    }
-
-    fun togglePlay() {
-        if (!prepared) return
-        if (playing) {
-            runCatching { player.pause() }
-            playing = false
-            context.setAudioPosition(bookId, position.toLong())
-        } else {
-            runCatching { player.start() }
-            playing = true
-        }
-    }
 
     LaunchedEffect(bookId, sourceUri) {
-        try {
-            player.reset()
-            val uri = (sourceUri ?: item.uri)?.takeIf { it.isNotBlank() }?.let(Uri::parse)
-            if (uri != null) player.setDataSource(context, uri)
-            else player.setDataSource(item.localPath)
-            player.setOnPreparedListener { mp ->
-                duration = mp.duration.coerceAtLeast(0)
-                val resume = context.getAudioPosition(bookId).toInt().coerceIn(0, duration.coerceAtLeast(0))
-                seekTo(resume)
-                prepared = true
-                runCatching { mp.playbackParams = mp.playbackParams.setSpeed(speed) }
-            }
-            player.setOnCompletionListener {
-                playing = false
-                if (sleepAt == Long.MAX_VALUE) { sleepAt = 0; sleepLeft = "" }
-                context.setAudioPosition(bookId, duration.toLong())
-            }
-            player.setOnErrorListener { _, _, _ ->
-                error = "This audio file could not be played."
-                playing = false
-                true
-            }
-            player.prepareAsync()
-        } catch (e: Exception) {
-            error = e.message ?: "This audio file could not be played."
-        }
+        val source = sourceUri ?: item.uri ?: item.localPath
+        if (source.isNullOrBlank()) return@LaunchedEffect
+        AudioController.start(
+            context,
+            source,
+            bookId,
+            item.title,
+            context.getAudioPosition(bookId).toInt(),
+        )
+        AudioPlayerService.start(context)
     }
 
-    LaunchedEffect(prepared, playing) {
-        while (prepared) {
-            if (playing) {
-                runCatching { position = player.currentPosition }
-                if (sleepAt in 1 until Long.MAX_VALUE && System.currentTimeMillis() >= sleepAt) {
-                    runCatching { player.pause() }
-                    playing = false
-                    sleepAt = 0
-                    sleepLeft = ""
-                }
-            }
-            delay(300)
-        }
-    }
-
-    LaunchedEffect(bookId) {
+    // Keep the slider moving while the shared player runs in the background.
+    LaunchedEffect(Unit) {
         while (true) {
-            delay(5000)
-            if (position > 0) context.setAudioPosition(bookId, position.toLong())
-        }
-    }
-
-    LaunchedEffect(sleepAt) {
-        while (sleepAt > 0 && sleepAt != Long.MAX_VALUE) {
-            val left = sleepAt - System.currentTimeMillis()
-            sleepLeft = if (left > 0) "SLEEP ${formatTime(left)}" else ""
-            delay(1000)
-        }
-    }
-
-    DisposableEffect(player) {
-        onDispose {
-            runCatching { context.setAudioPosition(bookId, player.currentPosition.toLong()) }
-            runCatching { player.release() }
+            AudioController.poll()
+            delay(300)
         }
     }
 
@@ -170,81 +90,83 @@ fun AudioScreen(
             Spacer(Modifier.weight(1f))
             MonoLabel("AUDIOBOOK")
             Spacer(Modifier.weight(1f))
-            IconButton(onClick = {}, enabled = false) { Spacer(Modifier.size(20.dp)) }
+            IconButton(onClick = {
+                AudioController.stop()
+                AudioPlayerService.stop(context)
+                onBack()
+            }) { Icon(MonoIcons.Close, contentDescription = "Close", tint = MaterialTheme.colorScheme.onSurface) }
         }
 
-        if (error != null) {
-            Column(Modifier.padding(24.dp)) { ErrorBanner(error!!, onRetry = null) }
-        } else {
-            Column(
-                Modifier.fillMaxSize().padding(horizontal = 20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Spacer(Modifier.height(12.dp))
-                CoverImage(item.cover, 140.dp, 140.dp)
-                Spacer(Modifier.height(14.dp))
-                Text(item.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                if (item.authors.isNotEmpty()) {
-                    Text(
-                        item.authors.joinToString(", "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Spacer(Modifier.height(16.dp))
-
-                Slider(
-                    value = if (duration > 0) position.toFloat() / duration else 0f,
-                    onValueChange = { value -> seekTo((value * duration).roundToInt()) },
-                    enabled = prepared && duration > 0,
-                    colors = SliderDefaults.colors(
-                        thumbColor = MaterialTheme.colorScheme.primary,
-                        activeTrackColor = MaterialTheme.colorScheme.primary,
-                        inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant,
-                    ),
-                )
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    MonoLabel(formatTime(position))
-                    MonoLabel(if (duration > 0) "-${formatTime(duration - position)}" else "")
-                }
-
-                Spacer(Modifier.height(12.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    GhostButton("-30", { seekTo(position - 30_000) }, enabled = prepared, modifier = Modifier.padding(horizontal = 4.dp))
-                    GhostButton("-15", { seekTo(position - 15_000) }, enabled = prepared, modifier = Modifier.padding(horizontal = 4.dp))
-                    PrimaryButton(if (playing) "PAUSE" else "PLAY", { togglePlay() }, enabled = prepared, icon = null)
-                    GhostButton("+15", { seekTo(position + 15_000) }, enabled = prepared, modifier = Modifier.padding(horizontal = 4.dp))
-                    GhostButton("+30", { seekTo(position + 30_000) }, enabled = prepared, modifier = Modifier.padding(horizontal = 4.dp))
-                }
-
-                Spacer(Modifier.height(14.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GhostButton("SPEED ${speed}x", { speedOpen = true })
-                    GhostButton(sleepLeft.ifBlank { if (sleepAt == Long.MAX_VALUE) "SLEEP TO END" else "SLEEP" }, { sleepOpen = true })
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GhostButton("BOOKMARK HERE", {
-                        if (prepared) {
-                            context.addAudioBookmark(bookId, position.toLong(), formatTime(position))
-                            bookmarks = context.getAudioBookmarks(bookId)
-                        }
-                    }, enabled = prepared)
-                    GhostButton("MARKS (${bookmarks.size})", { marksOpen = true })
-                    if (sleepAt > 0) GhostButton("CANCEL SLEEP", { sleepAt = 0; sleepLeft = "" })
-                }
-                Spacer(Modifier.height(10.dp))
+        Column(
+            Modifier.fillMaxSize().padding(horizontal = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(Modifier.height(10.dp))
+            CoverImage(item.cover, 132.dp, 132.dp)
+            Spacer(Modifier.height(12.dp))
+            Text(item.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (item.authors.isNotEmpty()) {
                 Text(
-                    "Position, speed and bookmarks are remembered for this audiobook.",
+                    item.authors.joinToString(", "),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
+            Spacer(Modifier.height(14.dp))
+
+            Slider(
+                value = if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f,
+                onValueChange = { value -> AudioController.seek((value * duration).roundToInt()) },
+                enabled = duration > 0,
+                colors = SliderDefaults.colors(
+                    thumbColor = MaterialTheme.colorScheme.primary,
+                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                    inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant,
+                ),
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                MonoLabel(formatTime(position))
+                MonoLabel(if (duration > 0) "-${formatTime(duration - position)}" else "")
+            }
+
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                GhostButton("-30", { AudioController.skip(-30_000) }, modifier = Modifier.padding(horizontal = 4.dp))
+                GhostButton("-15", { AudioController.skip(-15_000) }, modifier = Modifier.padding(horizontal = 4.dp))
+                PrimaryButton(if (playing) "PAUSE" else "PLAY", { AudioController.toggle() }, icon = null)
+                GhostButton("+15", { AudioController.skip(15_000) }, modifier = Modifier.padding(horizontal = 4.dp))
+                GhostButton("+30", { AudioController.skip(30_000) }, modifier = Modifier.padding(horizontal = 4.dp))
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GhostButton("SPEED ${speed}x", { speedOpen = true })
+                GhostButton(
+                    when {
+                        sleepUntil == Long.MAX_VALUE -> "SLEEP TO END"
+                        sleepUntil > 0 -> "SLEEP ${((sleepUntil - System.currentTimeMillis()) / 60000).coerceAtLeast(0)}m"
+                        else -> "SLEEP"
+                    },
+                    { sleepOpen = true },
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GhostButton("BOOKMARK HERE", {
+                    context.addAudioBookmark(bookId, position.toLong(), formatTime(position))
+                    bookmarks = context.getAudioBookmarks(bookId)
+                })
+                GhostButton("MARKS (${bookmarks.size})", { marksOpen = true })
+                if (sleepUntil > 0) GhostButton("CANCEL SLEEP", { AudioController.setSleepUntil(0) })
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Playback continues in the background with notification controls. Position, speed and bookmarks are remembered.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 
@@ -260,7 +182,7 @@ fun AudioScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = if (value == speed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).clickable {
-                                applySpeed(value)
+                                AudioController.setSpeed(value)
                                 speedOpen = false
                             },
                         )
@@ -283,7 +205,7 @@ fun AudioScreen(
                             "$minutes minutes",
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).clickable {
-                                sleepAt = System.currentTimeMillis() + minutes * 60_000L
+                                AudioController.setSleepUntil(System.currentTimeMillis() + minutes * 60_000L)
                                 sleepOpen = false
                             },
                         )
@@ -293,8 +215,7 @@ fun AudioScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).clickable {
-                            sleepAt = Long.MAX_VALUE
-                            sleepLeft = "SLEEP TO END"
+                            AudioController.setSleepUntil(Long.MAX_VALUE)
                             sleepOpen = false
                         },
                     )
@@ -312,7 +233,7 @@ fun AudioScreen(
             text = {
                 Column {
                     if (bookmarks.isEmpty()) {
-                        Text("No bookmarks yet. Tap BOOKMARK HERE while playing.", style = MaterialTheme.typography.bodySmall)
+                        Text("No bookmarks yet. Tap BOOKMARK HERE while listening.", style = MaterialTheme.typography.bodySmall)
                     } else {
                         bookmarks.toSortedMap().forEach { (pos, label) ->
                             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -320,7 +241,7 @@ fun AudioScreen(
                                     "$label  ·  ${formatTime(pos.toInt())}",
                                     style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier.weight(1f).clickable {
-                                        seekTo(pos.toInt())
+                                        AudioController.seek(pos.toInt())
                                         marksOpen = false
                                     },
                                 )
@@ -346,5 +267,3 @@ private fun formatTime(ms: Int): String {
     val s = total % 60
     return if (h > 0) String.format("%d:%02d:%02d", h, m, s) else String.format("%d:%02d", m, s)
 }
-
-private fun formatTime(ms: Long): String = formatTime(ms.coerceIn(0, Int.MAX_VALUE.toLong()).toInt())

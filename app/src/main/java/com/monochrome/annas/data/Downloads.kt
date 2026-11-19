@@ -65,6 +65,61 @@ object Downloads {
     private val prepareJobs = mutableMapOf<String, Job>()
     private val attempts = mutableMapOf<String, Int>()
 
+    /** Downloads waiting for a free slot (max 2) or for Wi-Fi. */
+    private data class Queued(val request: DownloadRequest, val mirrors: List<String>)
+    private val pending = ArrayDeque<Queued>()
+    private var queueJob: Job? = null
+
+    private fun onWifi(context: Context): Boolean = try {
+        val cm = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val network = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(network) ?: return false
+        caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) ||
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET)
+    } catch (_: Exception) { false }
+
+    private fun activeIds(): Set<String> =
+        _nativeTasks.value.filter { it.state in setOf("queued", "downloading", "waiting", "saving") }.map { it.id }.toSet() +
+            _preparing.value.map { it.id }.toSet()
+
+    /**
+     * Entry point used by the UI: enforces Wi-Fi-only, a two-download cap and
+     * duplicate detection before handing the job to the browser resolver.
+     */
+    fun enqueue(context: Context, request: DownloadRequest, mirrors: List<String>) {
+        if (runCatching { parseLibrary(Native.library()) }.getOrNull()?.any { it.id == request.id } == true) {
+            android.widget.Toast.makeText(context, "This book is already in your library", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        if ((context.getWifiOnly() && !onWifi(context)) || request.id in activeIds()) {
+            if (pending.none { it.request.id == request.id }) pending.addLast(Queued(request, mirrors))
+            android.widget.Toast.makeText(
+                context,
+                if (context.getWifiOnly() && !onWifi(context)) "Waiting for Wi-Fi…" else "Queued behind another download",
+                android.widget.Toast.LENGTH_SHORT,
+            ).show()
+            pumpQueue(context.applicationContext)
+            return
+        }
+        prepareAndStart(context, request, mirrors)
+    }
+
+    private fun pumpQueue(context: Context) {
+        if (queueJob?.isActive == true) return
+        queueJob = scope.launch {
+            while (pending.isNotEmpty()) {
+                if ((context.getWifiOnly() && !onWifi(context)) || activeIds().size >= 2) {
+                    delay(2500)
+                    continue
+                }
+                val next = pending.removeFirst()
+                if (runCatching { parseLibrary(Native.library()) }.getOrNull()?.any { it.id == next.request.id } == true) continue
+                prepareAndStart(context, next.request, next.mirrors)
+            }
+            queueJob = null
+        }
+    }
+
     /** Errors that mean the site's bot protection stopped the plain HTTP client. */
     private fun isBlocked(error: String?): Boolean =
         error != null && (error.contains("Blocked by the site protection", true) ||
@@ -181,6 +236,7 @@ object Downloads {
         refreshed.remove(id)
         attempts.remove(id)
         prepareJobs.remove(id)?.cancel()
+        pending.removeAll { it.request.id == id }
         clearPreparing(id)
         scope.launch {
             try { Native.cancelDownload(id) } catch (_: Exception) {}
@@ -425,6 +481,7 @@ object Downloads {
             browserRequests.remove(task.id)
             browserMirrors.remove(task.id)
             attempts.remove(task.id)
+            pumpQueue(context.applicationContext)
         }
     }
 

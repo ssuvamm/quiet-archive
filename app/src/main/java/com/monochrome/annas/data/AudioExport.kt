@@ -1,6 +1,10 @@
 package com.monochrome.annas.data
 
 import android.content.Context
+import android.media.MediaCodec
+import android.media.MediaCodecInfo
+import android.media.MediaFormat
+import android.media.MediaMuxer
 import android.net.Uri
 import android.os.Bundle
 import android.provider.DocumentsContract
@@ -61,10 +65,23 @@ object AudioExport {
             if (parts.isEmpty()) throw IllegalStateException("There is no text to read in this book.")
             val merged = File(dir, "audiobook.wav")
             mergeWav(parts, merged)
-            val name = sanitize(title) + " (audiobook).wav"
-            val uri = saveAlongsideBook(context, merged, name, bookId)
+            val finalFile = if (context.getAudioFormat() == "m4a") {
+                val m4a = File(dir, "audiobook.m4a")
+                try {
+                    encodeToM4a(merged, m4a)
+                    m4a
+                } catch (e: Exception) {
+                    android.util.Log.w("AudioExport", "M4A encoding failed — saving WAV", e)
+                    merged
+                }
+            } else merged
+            val ext = if (finalFile.name.endsWith(".m4a")) "m4a" else "wav"
+            val mime = if (ext == "m4a") "audio/mp4" else "audio/wav"
+            val name = sanitize(title) + " (audiobook).$ext"
+            val uri = saveAlongsideBook(context, finalFile, name, bookId, mime)
             parts.forEach { it.delete() }
             merged.delete()
+            finalFile.delete()
             name
         } finally {
             runCatching { engine.stop() }
@@ -183,6 +200,95 @@ object AudioExport {
         }
     }
 
+    /** Encode the joined PCM WAV into a much smaller AAC/M4A audiobook. */
+    private fun encodeToM4a(wav: File, out: File) {
+        val bytes = wav.readBytes()
+        if (bytes.size < 44) throw IllegalStateException("No audio data to encode")
+        var fmtOffset = -1
+        var dataOffset = -1
+        var dataSize = 0
+        var sampleRate = 44100
+        var channels = 1
+        var pos = 12
+        while (pos + 8 <= bytes.size) {
+            val id = String(bytes, pos, 4, Charsets.US_ASCII)
+            val size = leInt(bytes, pos + 4)
+            if (size < 0 || pos + 8 + size > bytes.size) break
+            when (id) {
+                "fmt " -> {
+                    fmtOffset = pos + 8
+                    channels = leShort(bytes, pos + 10).toInt()
+                    sampleRate = leInt(bytes, pos + 12)
+                }
+                "data" -> { dataOffset = pos + 8; dataSize = size }
+            }
+            pos += 8 + size + (size and 1)
+        }
+        if (fmtOffset < 0 || dataOffset < 0 || dataSize <= 0) {
+            throw IllegalStateException("Speech engine produced an unreadable WAV")
+        }
+
+        val format = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, channels)
+        format.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
+        format.setInteger(MediaFormat.KEY_BIT_RATE, 96_000 * channels)
+        val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
+        val muxer = MediaMuxer(out.path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        var track = -1
+        var inputPos = 0
+        var presentationUs = 0L
+        var eosQueued = false
+        try {
+            codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            codec.start()
+            while (true) {
+                val inIndex = codec.dequeueInputBuffer(10_000)
+                if (inIndex >= 0) {
+                    val buffer = codec.getInputBuffer(inIndex) ?: break
+                    buffer.clear()
+                    val count = minOf(remainingCapacity(buffer), dataSize - inputPos)
+                    if (count > 0) {
+                        buffer.put(bytes, dataOffset + inputPos, count)
+                        codec.queueInputBuffer(inIndex, 0, count, presentationUs, 0)
+                        inputPos += count
+                        presentationUs += count.toLong() * 1_000_000L / (sampleRate * channels * 2).coerceAtLeast(1)
+                    } else if (!eosQueued) {
+                        codec.queueInputBuffer(inIndex, 0, 0, presentationUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                        eosQueued = true
+                    }
+                }
+                val info = MediaCodec.BufferInfo()
+                when (val outIndex = codec.dequeueOutputBuffer(info, 10_000)) {
+                    MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> track = muxer.addTrack(codec.outputFormat)
+                    MediaCodec.INFO_TRY_AGAIN_LATER -> Unit
+                    else -> if (outIndex >= 0) {
+                        if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) info.size = 0
+                        if (info.size > 0 && track >= 0) {
+                            val encoded = codec.getOutputBuffer(outIndex) ?: break
+                            encoded.position(info.offset)
+                            encoded.limit(info.offset + info.size)
+                            muxer.writeSampleData(track, encoded, info)
+                        }
+                        val done = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
+                        codec.releaseOutputBuffer(outIndex, false)
+                        if (done) break
+                    }
+                }
+            }
+        } finally {
+            runCatching { codec.stop() }
+            runCatching { codec.release() }
+            runCatching { muxer.release() }
+        }
+    }
+
+    private fun remainingCapacity(buffer: java.nio.ByteBuffer): Int {
+        // ByteBuffer.remaining() is the writable space right after clear().
+        return buffer.remaining()
+    }
+
+    private fun leShort(bytes: ByteArray, at: Int): Short =
+        ((bytes[at].toInt() and 0xFF) or ((bytes[at + 1].toInt() and 0xFF) shl 8)).toShort()
+
     private fun leInt(bytes: ByteArray, at: Int): Int =
         (bytes[at].toInt() and 0xFF) or
             ((bytes[at + 1].toInt() and 0xFF) shl 8) or
@@ -190,7 +296,7 @@ object AudioExport {
             ((bytes[at + 3].toInt() and 0xFF) shl 24)
 
     /** Save next to the book when a folder is chosen, otherwise in Downloads. */
-    private fun saveAlongsideBook(context: Context, file: File, name: String, bookId: String?): String {
+    private fun saveAlongsideBook(context: Context, file: File, name: String, bookId: String?, mime: String): String {
         val folder = context.getFolderUri()
         if (folder != null) {
             try {
@@ -198,7 +304,7 @@ object AudioExport {
                 val treeId = DocumentsContract.getTreeDocumentId(tree)
                     ?: throw IllegalStateException("Could not read the chosen folder")
                 val parent = DocumentsContract.buildDocumentUriUsingTree(tree, treeId)
-                val doc = DocumentsContract.createDocument(context.contentResolver, parent, "audio/wav", name)
+                val doc = DocumentsContract.createDocument(context.contentResolver, parent, mime, name)
                     ?: throw IllegalStateException("Could not create the audiobook file")
                 context.contentResolver.openOutputStream(doc)?.use { out ->
                     file.inputStream().use { it.copyTo(out) }
@@ -211,17 +317,17 @@ object AudioExport {
                 Toast.makeText(context, "Chosen folder unavailable — saved to Downloads instead", Toast.LENGTH_LONG).show()
             }
         }
-        val uri = saveToDownloads(context, file, name)
+        val uri = saveToDownloads(context, file, name, mime)
         if (bookId != null) context.setAudiobookUri(bookId, uri)
         return uri
     }
 
-    private fun saveToDownloads(context: Context, file: File, name: String): String {
+    private fun saveToDownloads(context: Context, file: File, name: String, mime: String): String {
         if (android.os.Build.VERSION.SDK_INT >= 29) {
             val resolver = context.contentResolver
             val values = android.content.ContentValues().apply {
                 put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name)
-                put(android.provider.MediaStore.Downloads.MIME_TYPE, "audio/wav")
+                put(android.provider.MediaStore.Downloads.MIME_TYPE, mime)
                 put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
             }
             val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
