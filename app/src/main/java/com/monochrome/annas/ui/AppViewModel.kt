@@ -16,6 +16,7 @@ import com.monochrome.annas.data.parseBook
 import com.monochrome.annas.data.parseLibrary
 import com.monochrome.annas.data.parseOk
 import com.monochrome.annas.data.parseSearchResults
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -337,21 +338,59 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     var audioLinks by mutableStateOf(context.getAudiobookLinks())
         private set
+    var audiobookStatus by mutableStateOf<String?>(null)
+        private set
+    var audiobookProgress by mutableStateOf("")
+        private set
+    private var audiobookJob: Job? = null
 
-    /** Create a local audiobook next to the book and link it for listening. */
-    fun audiobookify(item: LibraryItem, onStatus: (String) -> Unit, onDone: (String?) -> Unit) {
-        viewModelScope.launch {
-            try {
-                val doc = Reader.open(context, item)
-                val uri = AudioExport.export(context, doc, item.title, item.id) { chapter, total ->
-                    onStatus("Speaking chapter $chapter / $total…")
+    /** Create audiobooks for one or more books; the whole queue can be stopped. */
+    fun audiobookify(items: List<LibraryItem>) {
+        if (audiobookJob?.isActive == true || items.isEmpty()) return
+        audiobookJob = viewModelScope.launch {
+            var completed = 0
+            items.forEachIndexed { index, item ->
+                audiobookProgress = "${index + 1} / ${items.size}"
+                audiobookStatus = item.title
+                try {
+                    val doc = Reader.open(context, item)
+                    AudioExport.export(context, doc, item.title, item.id) { chapter, total ->
+                        audiobookStatus = "${item.title} · chapter $chapter / $total"
+                    }
+                    completed++
+                } catch (e: CancellationException) {
+                    audiobookStatus = null
+                    audiobookProgress = ""
+                    audiobookJob = null
+                    throw e
+                } catch (e: Exception) {
+                    android.widget.Toast.makeText(
+                        context,
+                        "${item.title}: ${e.message ?: "Could not create the audiobook"}",
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
                 }
-                audioLinks = context.getAudiobookLinks()
-                onDone(null)
-            } catch (e: Exception) {
-                onDone(e.message ?: "Could not create the audiobook")
+            }
+            audiobookStatus = null
+            audiobookProgress = ""
+            audioLinks = context.getAudiobookLinks()
+            audiobookJob = null
+            if (completed > 0) {
+                android.widget.Toast.makeText(
+                    context,
+                    "$completed audiobook${if (completed == 1) "" else "s"} saved",
+                    android.widget.Toast.LENGTH_SHORT,
+                ).show()
             }
         }
+    }
+
+    fun cancelAudiobookify() {
+        AudioExport.cancel()
+        audiobookJob?.cancel()
+        audiobookJob = null
+        audiobookStatus = null
+        audiobookProgress = ""
     }
 
     var hasDownloadsFilter by mutableStateOf(false)

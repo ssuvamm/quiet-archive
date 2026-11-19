@@ -42,12 +42,15 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+enum class LibraryKind { ALL, EBOOKS }
+
 @Composable
 fun LibraryScreen(
     vm: AppViewModel,
     onOpen: (LibraryItem) -> Unit,
     onOpenBook: (String) -> Unit,
     onListen: (LibraryItem) -> Unit,
+    kind: LibraryKind = LibraryKind.ALL,
 ) {
     val context = LocalContext.current
     var tab by remember { mutableStateOf(0) } // 0 downloaded, 1 saved
@@ -57,21 +60,6 @@ fun LibraryScreen(
     var sortOpen by remember { mutableStateOf(false) }
     var toDelete by remember { mutableStateOf<LibraryItem?>(null) }
     var toUnsave by remember { mutableStateOf<SavedBook?>(null) }
-    var audiobookItem by remember { mutableStateOf<LibraryItem?>(null) }
-    var audiobookStatus by remember { mutableStateOf("") }
-
-    fun startAudiobook(item: LibraryItem) {
-        audiobookItem = item
-        audiobookStatus = "Preparing…"
-        vm.audiobookify(item, { status -> audiobookStatus = status }) { err ->
-            audiobookItem = null
-            android.widget.Toast.makeText(
-                context,
-                err ?: "Audiobook saved next to the book",
-                android.widget.Toast.LENGTH_LONG,
-            ).show()
-        }
-    }
 
     // Reactive: the bookmark set changes on the book page, and the library
     // changes when a download finishes.
@@ -86,7 +74,7 @@ fun LibraryScreen(
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(18.dp))
         MonoLabel("YOUR LIBRARY")
-        Text("Library", style = MaterialTheme.typography.displayMedium)
+        Text(if (kind == LibraryKind.EBOOKS) "Ebooks" else "Library", style = MaterialTheme.typography.displayMedium)
         Text("${items.size} books · ${formatBytes(items.sumOf { it.size })}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth()) {
@@ -114,7 +102,8 @@ fun LibraryScreen(
             items.filter { it ->
                 val q = query.lowercase()
                 (q.isBlank() || it.title.lowercase().contains(q) || it.authors.joinToString(" ").lowercase().contains(q)) &&
-                (filter == 0 || (filter == 1 && !it.read) || (filter == 2 && it.read))
+                (filter == 0 || (filter == 1 && !it.read) || (filter == 2 && it.read)) &&
+                (kind == LibraryKind.ALL || !Reader.isAudio(it))
             }.let { list ->
                 when (sort) {
                     1 -> list.sortedBy { it.savedAt }
@@ -151,7 +140,7 @@ fun LibraryScreen(
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
                     items(dlSaved, key = { it.id }) { item ->
-                        LibraryRow(item, hasAudio = item.id in vm.audioLinks, onOpen = { onOpen(item) }, onToggleRead = { vm.toggleRead(item) }, onDelete = { toDelete = item }, onAudiobookify = { startAudiobook(item) }, onListen = { onListen(item) })
+                        LibraryRow(item, hasAudio = item.id in vm.audioLinks, onOpen = { onOpen(item) }, onToggleRead = { vm.toggleRead(item) }, onDelete = { toDelete = item }, onAudiobookify = { vm.audiobookify(listOf(item)) }, onListen = { onListen(item) })
                         Hairline()
                     }
                     items(savedOnly, key = { "s" + it.id }) { s ->
@@ -164,7 +153,7 @@ fun LibraryScreen(
         } else {
             LazyColumn(Modifier.fillMaxSize()) {
                 items(filtered, key = { it.id }) { item ->
-                    LibraryRow(item, hasAudio = item.id in vm.audioLinks, onOpen = { onOpen(item) }, onToggleRead = { vm.toggleRead(item) }, onDelete = { toDelete = item }, onAudiobookify = { startAudiobook(item) }, onListen = { onListen(item) })
+                    LibraryRow(item, hasAudio = item.id in vm.audioLinks, onOpen = { onOpen(item) }, onToggleRead = { vm.toggleRead(item) }, onDelete = { toDelete = item }, onAudiobookify = { vm.audiobookify(listOf(item)) }, onListen = { onListen(item) })
                     Hairline()
                 }
                 item { Spacer(Modifier.height(24.dp)) }
@@ -188,26 +177,6 @@ fun LibraryScreen(
             text = { Text("This removes the bookmark; the file stays in your library if downloaded.", style = MaterialTheme.typography.bodySmall) },
             confirmButton = { TextButton(onClick = { vm.saveBookmark(s.id); vm.pruneSaved(); toUnsave = null }) { Text("REMOVE", style = MaterialTheme.typography.labelLarge) } },
             dismissButton = { TextButton(onClick = { toUnsave = null }) { Text("CANCEL", style = MaterialTheme.typography.labelLarge) } },
-            containerColor = MaterialTheme.colorScheme.surface,
-        )
-    }
-    audiobookItem?.let { item ->
-        AlertDialog(
-            onDismissRequest = {},
-            title = { Text("Making audiobook", style = MaterialTheme.typography.titleMedium) },
-            text = {
-                Column {
-                    Text(item.title, style = MaterialTheme.typography.bodyMedium)
-                    Spacer(Modifier.height(10.dp))
-                    ProgressLine()
-                    Spacer(Modifier.height(8.dp))
-                    Text(audiobookStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(8.dp))
-                    Text("This uses your phone's text-to-speech engine and runs entirely offline.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            },
-            confirmButton = {},
-            dismissButton = {},
             containerColor = MaterialTheme.colorScheme.surface,
         )
     }

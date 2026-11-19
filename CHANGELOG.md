@@ -4,6 +4,21 @@ All notable changes to Quiet Archive are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [semantic versioning](https://semver.org/).
 
+## [1.4.0] - 2026-11-20
+
+### Added
+- Swipe left/right in the ebook reader to change chapters; PREV/NEXT buttons
+  and the chapter slider still work.
+- LISTEN in the reader now opens the audiobook player (or offers to create the
+  audiobook first). Live speech moved to READ ALOUD in the Aa menu.
+- Audiobook creation can be stopped at any time with a STOP button, and can be
+  started for several books at once from the new AUDIO tab.
+- EBOOKS and AUDIO bottom tabs: ebooks only, or generated audiobooks, audio
+  files, books ready to convert and saved books ready to download.
+- Voice engine picker in Settings with links to install Piper TTS and RHVoice,
+  both free on-device engines with better voices than the basic system voice.
+  The chosen engine is used for reading aloud and audiobook creation.
+
 ## [1.3.0] - 2026-11-19
 
 ### Added

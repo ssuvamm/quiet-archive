@@ -7,10 +7,12 @@ import android.provider.DocumentsContract
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.widget.Toast
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -24,6 +26,11 @@ import kotlin.coroutines.resumeWithException
  * play later.
  */
 object AudioExport {
+    private val cancelled = AtomicBoolean(false)
+
+    /** Stop an export in progress (checked between every spoken chunk). */
+    fun cancel() { cancelled.set(true) }
+
     suspend fun export(
         context: Context,
         doc: ReaderDocument,
@@ -31,6 +38,7 @@ object AudioExport {
         bookId: String?,
         onProgress: (chapter: Int, total: Int) -> Unit,
     ): String = withContext(Dispatchers.IO) {
+        cancelled.set(false)
         val engine = openEngine(context)
         try {
             val dir = File(context.cacheDir, "tts").apply { mkdirs() }
@@ -38,15 +46,18 @@ object AudioExport {
             val parts = mutableListOf<File>()
             val total = doc.chapters.size
             for (i in doc.chapters.indices) {
+                checkCancelled()
                 val text = doc.chapterText(i).trim()
                 if (text.isBlank()) continue
                 onProgress(i + 1, total)
                 chunk(text).forEachIndexed { n, piece ->
+                    checkCancelled()
                     val out = File(dir, "part-$i-$n.wav")
                     synthesize(engine, piece, out)
                     if (out.length() > 44) parts.add(out) else out.delete()
                 }
             }
+            checkCancelled()
             if (parts.isEmpty()) throw IllegalStateException("There is no text to read in this book.")
             val merged = File(dir, "audiobook.wav")
             mergeWav(parts, merged)
@@ -61,15 +72,25 @@ object AudioExport {
         }
     }
 
+    private fun checkCancelled() {
+        if (cancelled.get()) throw CancellationException("Audiobook creation stopped")
+    }
+
     private suspend fun openEngine(context: Context): TextToSpeech =
         suspendCancellableCoroutine { cont ->
             var engine: TextToSpeech? = null
-            engine = TextToSpeech(context.applicationContext) { status ->
+            val chosen = context.getTtsEngine()
+            val init = TextToSpeech.OnInitListener { status ->
                 if (status == TextToSpeech.SUCCESS && engine != null) {
                     cont.resume(engine!!)
                 } else if (cont.isActive) {
-                    cont.resumeWithException(IllegalStateException("No text-to-speech engine is available."))
+                    cont.resumeWithException(IllegalStateException("That speech engine could not start. Try the system default."))
                 }
+            }
+            engine = if (chosen == null) {
+                TextToSpeech(context.applicationContext, init)
+            } else {
+                TextToSpeech(context.applicationContext, init, chosen)
             }
             cont.invokeOnCancellation { runCatching { engine?.shutdown() } }
         }

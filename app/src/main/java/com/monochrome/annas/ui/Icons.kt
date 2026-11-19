@@ -86,4 +86,20 @@ object MonoIcons {
             moveTo(6f, 3f); lineTo(18f, 3f); lineTo(18f, 21f); lineTo(12f, 17f); lineTo(6f, 21f); close()
         }
     }.build()
+
+    val Book: ImageVector = ImageVector.Builder("Book", 24.dp, 24.dp, 24f, 24f).apply {
+        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.6f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+            moveTo(12f, 6f); lineTo(12f, 20f)
+            moveTo(5f, 5f); lineTo(11f, 5f); lineTo(11f, 21f); lineTo(5f, 19f); close()
+            moveTo(13f, 5f); lineTo(19f, 5f); lineTo(19f, 19f); lineTo(13f, 21f); close()
+        }
+    }.build()
+
+    val Headphones: ImageVector = ImageVector.Builder("Headphones", 24.dp, 24.dp, 24f, 24f).apply {
+        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.6f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round) {
+            moveTo(4f, 14f); lineTo(4f, 12f); lineTo(20f, 12f); lineTo(20f, 14f)
+            moveTo(4f, 14f); lineTo(7f, 14f); lineTo(7f, 19f); lineTo(5f, 19f); lineTo(4f, 18f); close()
+            moveTo(20f, 14f); lineTo(17f, 14f); lineTo(17f, 19f); lineTo(19f, 19f); lineTo(20f, 18f); close()
+        }
+    }.build()
 }

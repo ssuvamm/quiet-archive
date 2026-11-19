@@ -86,7 +86,6 @@ private fun BookContent(
     onListen: (com.monochrome.annas.data.LibraryItem) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    var audioStatus by remember { mutableStateOf<String?>(null) }
     val active = task != null && task.state in setOf("queued", "downloading", "waiting", "saving")
     val failed = task?.state == "error" && !task.error.isNullOrBlank()
     val percent = if (task != null && task.total > 0) (task.received * 100 / task.total).toInt() else 0
@@ -130,25 +129,12 @@ private fun BookContent(
         if (inLibrary != null) {
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                GhostButton(if (audioStatus != null) "CREATING…" else "AUDIOBOOKIFY", {
-                    if (audioStatus != null) return@GhostButton
-                    audioStatus = "Preparing…"
-                    vm.audiobookify(inLibrary, { status -> audioStatus = status }) { err ->
-                        audioStatus = null
-                        android.widget.Toast.makeText(
-                            context,
-                            err ?: "Audiobook saved next to the book",
-                            android.widget.Toast.LENGTH_LONG,
-                        ).show()
-                    }
+                GhostButton(if (vm.audiobookStatus != null) "CREATING…" else "AUDIOBOOKIFY", {
+                    vm.audiobookify(listOf(inLibrary))
                 })
                 if (book.id in vm.audioLinks) {
                     GhostButton("LISTEN", { onListen(inLibrary) })
                 }
-            }
-            audioStatus?.let {
-                Spacer(Modifier.height(4.dp))
-                MonoLabel(it)
             }
         }
         if (active) {

@@ -195,6 +195,15 @@ fun Context.clearSearchHistory() {
     sp().edit().putString("search_history", "[]").apply()
 }
 
+// ---- Text-to-speech -----------------------------------------------------
+
+/** Package name of the chosen TTS engine, or null for the system default. */
+fun Context.getTtsEngine(): String? = sp().getString("tts_engine", null)?.takeIf { it.isNotBlank() }
+fun Context.setTtsEngine(engine: String?) {
+    if (engine.isNullOrBlank()) sp().edit().remove("tts_engine").apply()
+    else sp().edit().putString("tts_engine", engine).apply()
+}
+
 // ---- Linked audiobooks --------------------------------------------------
 
 fun Context.getAudiobookUri(bookId: String): String? = sp().getString("audiobook_$bookId", null)

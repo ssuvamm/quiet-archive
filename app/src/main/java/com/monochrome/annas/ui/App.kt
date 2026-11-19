@@ -44,6 +44,8 @@ sealed class Screen {
     data object Search : Screen()
     data class Book(val url: String, val preview: SearchResult?) : Screen()
     data object Library : Screen()
+    data object Ebooks : Screen()
+    data object AudioLibrary : Screen()
     data object Settings : Screen()
     data class Reader(val item: LibraryItem) : Screen()
     data class Audio(val item: LibraryItem, val uri: String? = null, val bookId: String? = null) : Screen()
@@ -169,8 +171,27 @@ fun MainApp() {
                         onOpenBook = { url -> navigate(Screen.Book(url, null)) },
                         onListen = { item -> openAudiobook(item) },
                     )
+                    is Screen.Ebooks -> LibraryScreen(
+                        vm = vm,
+                        kind = LibraryKind.EBOOKS,
+                        onOpen = { item -> openItem(item) },
+                        onOpenBook = { url -> navigate(Screen.Book(url, null)) },
+                        onListen = { item -> openAudiobook(item) },
+                    )
+                    is Screen.AudioLibrary -> AudioLibraryScreen(
+                        vm = vm,
+                        onListen = { item -> openAudiobook(item) },
+                        onOpenAudio = { item -> openItem(item) },
+                        onOpenBook = { url -> navigate(Screen.Book(url, null)) },
+                        onAudiobookify = { item -> vm.audiobookify(listOf(item)) },
+                    )
                     is Screen.Settings -> SettingsScreen(vm = vm)
-                    is Screen.Reader -> ReaderScreen(item = s.item, onBack = { back() })
+                    is Screen.Reader -> ReaderScreen(
+                        item = s.item,
+                        vm = vm,
+                        onListen = { openAudiobook(s.item) },
+                        onBack = { back() },
+                    )
                     is Screen.Audio -> AudioScreen(
                         item = s.item,
                         sourceUri = s.uri,
@@ -202,6 +223,34 @@ fun MainApp() {
             }
         }
     }
+    vm.audiobookStatus?.let { status ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Making audiobook", style = MaterialTheme.typography.titleMedium) },
+            text = {
+                Column {
+                    if (vm.audiobookProgress.isNotBlank()) MonoLabel(vm.audiobookProgress)
+                    Spacer(Modifier.height(8.dp))
+                    Text(status, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(8.dp))
+                    ProgressLine()
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Uses this phone's text-to-speech engine. You can stop at any time.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { vm.cancelAudiobookify() }) {
+                    Text("STOP", style = MaterialTheme.typography.labelLarge)
+                }
+            },
+            dismissButton = {},
+            containerColor = MaterialTheme.colorScheme.surface,
+        )
+    }
 }
 
 @Composable
@@ -213,6 +262,8 @@ fun BottomBar(current: Screen, onSelect: (Screen) -> Unit) {
     ) {
         BottomItem(MonoIcons.Search, "SEARCH", current is Screen.Search) { onSelect(Screen.Search) }
         BottomItem(MonoIcons.Library, "LIBRARY", current is Screen.Library) { onSelect(Screen.Library) }
+        BottomItem(MonoIcons.Book, "EBOOKS", current is Screen.Ebooks) { onSelect(Screen.Ebooks) }
+        BottomItem(MonoIcons.Headphones, "AUDIO", current is Screen.AudioLibrary) { onSelect(Screen.AudioLibrary) }
         BottomItem(MonoIcons.Settings, "SETTINGS", current is Screen.Settings) { onSelect(Screen.Settings) }
     }
 }

@@ -2,6 +2,7 @@ package com.monochrome.annas.ui
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
+import android.view.MotionEvent
 import android.graphics.pdf.PdfRenderer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
@@ -68,6 +69,7 @@ import com.monochrome.annas.data.getReaderLineHeight
 import com.monochrome.annas.data.getReaderMargin
 import com.monochrome.annas.data.getReaderTheme
 import com.monochrome.annas.data.getReadingPosition
+import com.monochrome.annas.data.getTtsEngine
 import com.monochrome.annas.data.setReaderBrightness
 import com.monochrome.annas.data.setReaderFontFamily
 import com.monochrome.annas.data.setReaderFontSize
@@ -95,14 +97,14 @@ private fun readerColors(theme: String): ReaderColors = when (theme) {
 }
 
 @Composable
-fun ReaderScreen(item: LibraryItem, onBack: () -> Unit) {
-    if (Reader.isPdf(item)) PdfReaderScreen(item, onBack) else EbookReaderScreen(item, onBack)
+fun ReaderScreen(item: LibraryItem, vm: AppViewModel, onListen: () -> Unit, onBack: () -> Unit) {
+    if (Reader.isPdf(item)) PdfReaderScreen(item, onBack) else EbookReaderScreen(item, vm, onListen, onBack)
 }
 
 // ---------------------------------------------------------------- EPUB/TXT
 
 @Composable
-private fun EbookReaderScreen(item: LibraryItem, onBack: () -> Unit) {
+private fun EbookReaderScreen(item: LibraryItem, vm: AppViewModel, onListen: () -> Unit, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var doc by remember(item.id) { mutableStateOf<ReaderDocument?>(null) }
@@ -118,6 +120,7 @@ private fun EbookReaderScreen(item: LibraryItem, onBack: () -> Unit) {
     var margin by remember { mutableStateOf(context.getReaderMargin()) }
     var brightness by remember { mutableStateOf(context.getReaderBrightness()) }
     var readerMarks by remember(item.id) { mutableStateOf(context.getReaderBookmarks(item.id)) }
+    var listenPrompt by remember { mutableStateOf(false) }
     val style = ReaderStyle(fontSize, theme, lineHeight, fontFamily, margin)
     var tocOpen by remember { mutableStateOf(false) }
     var settingsOpen by remember { mutableStateOf(false) }
@@ -129,7 +132,11 @@ private fun EbookReaderScreen(item: LibraryItem, onBack: () -> Unit) {
     var listening by remember { mutableStateOf(false) }
     var speaking by remember { mutableStateOf(false) }
     var speakOnLoad by remember { mutableStateOf(false) }
-    val tts = remember { TextToSpeech(context) { status -> ttsReady = status == TextToSpeech.SUCCESS } }
+    val tts = remember {
+        val init = TextToSpeech.OnInitListener { status -> ttsReady = status == TextToSpeech.SUCCESS }
+        val chosen = context.getTtsEngine()
+        if (chosen == null) TextToSpeech(context, init) else TextToSpeech(context, init, chosen)
+    }
     val latestChapter by rememberUpdatedState(chapter)
     val latestListening by rememberUpdatedState(listening)
     val latestDoc by rememberUpdatedState(doc)
@@ -199,8 +206,18 @@ private fun EbookReaderScreen(item: LibraryItem, onBack: () -> Unit) {
     val bridge = remember(item.id) {
         ReaderBridge { f -> fraction = f }
     }
+    val chapterCount by rememberUpdatedState(doc?.chapters?.size ?: 0)
+    val swipeChapter by rememberUpdatedState { delta: Int ->
+        listening = false
+        runCatching { tts.stop() }
+        val next = (chapter + delta).coerceIn(0, (chapterCount - 1).coerceAtLeast(0))
+        if (next != chapter) {
+            chapter = next
+            fraction = 0f
+        }
+    }
     val webView = remember {
-        WebView(context).apply {
+        SwipeWebView(context, { swipeChapter(1) }, { swipeChapter(-1) }).apply {
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             settings.javaScriptEnabled = true
             settings.allowFileAccess = true
@@ -261,17 +278,8 @@ private fun EbookReaderScreen(item: LibraryItem, onBack: () -> Unit) {
                 )
             }
             ReaderAction("Aa", colors) { settingsOpen = true }
-            ReaderAction(if (listening) "STOP" else "LISTEN", colors, active = listening) {
-                if (listening) {
-                    listening = false
-                    runCatching { tts.stop() }
-                    speaking = false
-                } else if (!ttsReady) {
-                    Toast.makeText(context, "Text-to-speech is not ready on this device.", Toast.LENGTH_SHORT).show()
-                } else {
-                    listening = true
-                    speakChapter(chapter)
-                }
+            ReaderAction("LISTEN", colors) {
+                if (item.id in vm.audioLinks) onListen() else listenPrompt = true
             }
             ReaderAction("TOC", colors) { tocOpen = true }
         }
@@ -362,6 +370,29 @@ private fun EbookReaderScreen(item: LibraryItem, onBack: () -> Unit) {
                 }
             }
         }
+    }
+
+    if (listenPrompt) {
+        AlertDialog(
+            onDismissRequest = { listenPrompt = false },
+            title = { Text("No audiobook yet", style = MaterialTheme.typography.titleMedium) },
+            text = {
+                Text(
+                    "Create an audiobook from this book first. It will be saved beside the book, then LISTEN opens the audiobook player.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    listenPrompt = false
+                    vm.audiobookify(listOf(item))
+                }) { Text("CREATE", style = MaterialTheme.typography.labelLarge) }
+            },
+            dismissButton = {
+                TextButton(onClick = { listenPrompt = false }) { Text("CANCEL", style = MaterialTheme.typography.labelLarge) }
+            },
+            containerColor = MaterialTheme.colorScheme.surface,
+        )
     }
 
     if (tocOpen) {
@@ -465,6 +496,18 @@ private fun EbookReaderScreen(item: LibraryItem, onBack: () -> Unit) {
                             fontFamily = "sans"
                             context.setReaderFontFamily(fontFamily)
                         }
+                        GhostButton(if (listening) "STOP READING" else "READ ALOUD", {
+                            if (listening) {
+                                listening = false
+                                runCatching { tts.stop() }
+                                speaking = false
+                            } else if (!ttsReady) {
+                                Toast.makeText(context, "Text-to-speech is not ready on this device.", Toast.LENGTH_SHORT).show()
+                            } else {
+                                listening = true
+                                speakChapter(chapter)
+                            }
+                        })
                         GhostButton(if (chapter in readerMarks) "★ CHAPTER" else "MARK CHAPTER", {
                             readerMarks = context.toggleReaderBookmark(item.id, chapter)
                         })
@@ -531,6 +574,34 @@ private class ReaderBridge(private val onFraction: (Float) -> Unit) {
     @JavascriptInterface
     fun onScroll(fraction: Float) {
         if (fraction.isFinite()) onFraction(fraction.coerceIn(0f, 1f))
+    }
+}
+
+/** WebView that turns chapters on a horizontal swipe while leaving vertical scroll alone. */
+private class SwipeWebView(
+    context: android.content.Context,
+    private val onNext: () -> Unit,
+    private val onPrevious: () -> Unit,
+) : WebView(context) {
+    private var downX = 0f
+    private var downY = 0f
+
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downX = event.x
+                downY = event.y
+            }
+            MotionEvent.ACTION_UP -> {
+                val dx = event.x - downX
+                val dy = event.y - downY
+                if (kotlin.math.abs(dx) > 90 && kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.5f) {
+                    if (dx < 0) onNext() else onPrevious()
+                }
+            }
+        }
+        return super.onTouchEvent(event)
     }
 }
 

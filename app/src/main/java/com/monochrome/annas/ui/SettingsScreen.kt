@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,8 +17,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -82,6 +85,20 @@ fun SettingsScreen(vm: AppViewModel) {
     var showSignIn by remember { mutableStateOf(false) }
     var loginStatus by remember { mutableStateOf("") }
     var stats by remember { mutableStateOf("") }
+    var ttsEngine by remember { mutableStateOf(context.getTtsEngine()) }
+    var enginePicker by remember { mutableStateOf(false) }
+    val ttsEngines = remember {
+        val pm = context.packageManager
+        val intent = Intent(android.speech.tts.TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE)
+        pm.queryIntentServices(intent, 0).mapNotNull { info ->
+            val label = try {
+                info.serviceInfo.applicationInfo.loadLabel(pm).toString()
+            } catch (_: Exception) {
+                info.serviceInfo.packageName
+            }
+            info.serviceInfo.packageName to label
+        }.distinctBy { it.first }
+    }
 
 val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
@@ -126,8 +143,78 @@ val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.Ope
         if (folder != null) {
             GhostButton("Use app storage", onClick = { context.setFolderUri(null); folder = null })
         }
-        Hairline()
         GhostButton("Clear download cache", onClick = { try { context.cacheDir.resolve("downloads").deleteRecursively() } catch (_: Exception) {} }, modifier = Modifier.padding(top = 8.dp))
+
+        SectionHeader("VOICES FOR AUDIOBOOKS")
+        Text(
+            "Audiobook creation uses a speech engine installed on this phone. System voices are basic; Piper and RHVoice are free, on-device engines with much more natural voices. Install one, then choose it here.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GhostButton("PIPER TTS", {
+                runCatching {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://play.google.com/store/search?q=piper%20tts&c=apps"))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
+            })
+            GhostButton("RHVOICE", {
+                runCatching {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://play.google.com/store/search?q=rhvoice&c=apps"))
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
+            })
+        }
+        Spacer(Modifier.height(8.dp))
+        GhostButton(
+            "VOICE ENGINE: ${ttsEngines.firstOrNull { it.first == ttsEngine }?.second ?: "SYSTEM DEFAULT"}",
+            { enginePicker = true },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Hairline()
+
+        if (enginePicker) {
+            AlertDialog(
+                onDismissRequest = { enginePicker = false },
+                title = { Text("Speech engine", style = MaterialTheme.typography.titleMedium) },
+                text = {
+                    Column {
+                        Text(
+                            "System default",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (ttsEngine == null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp).clickable {
+                                ttsEngine = null
+                                context.setTtsEngine(null)
+                                enginePicker = false
+                            },
+                        )
+                        ttsEngines.forEach { (pkg, label) ->
+                            Text(
+                                label,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = if (pkg == ttsEngine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp).clickable {
+                                    ttsEngine = pkg
+                                    context.setTtsEngine(pkg)
+                                    enginePicker = false
+                                },
+                            )
+                        }
+                        if (ttsEngines.isEmpty()) {
+                            Text("No extra speech engines found. Install Piper or RHVoice, then reopen Settings.", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { enginePicker = false }) { Text("CLOSE") } },
+                containerColor = MaterialTheme.colorScheme.surface,
+            )
+        }
 
         SectionHeader("SITE")
         Text("Base URL", style = MaterialTheme.typography.titleSmall)
